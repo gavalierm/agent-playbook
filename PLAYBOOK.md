@@ -16,7 +16,7 @@ súboru, ktorý správanie riadi. Čo sa dá skontrolovať strojom, kontroluje h
 
 Každá kapitola 1 až 11 má štyri časti. Problém hovorí, čo sa bez mechanizmu pokazí. Mechanizmus opisuje, ako to
 robíme. Ako to postaviť dáva kroky, formát súboru a príklad. Náš príklad ukazuje cesty v tomto repe, kde si hotovú
-verziu prečítaš. Kapitola 12 je poradie práce na prvý týždeň.
+verziu prečítaš. Kapitola 8 má navyše časť Kedy to potrebuješ. Kapitola 12 je poradie práce na prvý týždeň.
 
 Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
 žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
@@ -34,6 +34,16 @@ načíta, skontroluje a opraví.
 | správca servera | agent s rootom, robí len prácu, ktorá root alebo citlivý úkon potrebuje |
 | správca úloh | nástroj s úlohami, stavmi a komentármi, u nás Tasker |
 | persona, rola | súbor `PERSONA.md` v repe agenta a mandát opísaný v `roles/<slug>.md`, nezávislý od mena agenta |
+| vlákno | trvalá relácia agenta v jeho nástroji (u nás vlákno v T3 Code), prežije jednotlivé odpovede a dá sa do nej poslať text |
+| vlákno témy | ďalšie vlákno toho istého agenta, ktoré vedie jednu tému, hlavné vlákno je to, v ktorom agent beží predvolene |
+| ťah | jedno volanie modelu od vstupu po koniec odpovede, model pri ňom znova číta celý kontext |
+| beh | úsek, v ktorom agent pracuje na jednom vstupe, môže mať viac ťahov a volaní nástrojov |
+| schránka | adresár agenta s podadresármi `inbox` a `processed`, správa je súbor |
+| budič | program, ktorý správu zo schránky doručí do bežiacej relácie agenta a súbor presunie do `processed` |
+| dávka | všetky budiace správy pre jedno vlákno, ktoré budič pošle naraz, takže spotrebujú jeden ťah |
+| tiché okno | doba bez novej budiacej správy (u nás 30 s), po ktorej dávka odíde, aby správy tesne za sebou išli spolu |
+| režim správy | prvý riadok správy `odpoveď: čakám`, `nečakám` alebo `na vedomie`, hovorí, čo odosielateľ od odpovede čaká |
+| trasa odpovede | záznam, z ktorého vlákna odosielateľ písal, podľa neho budič doručí odpoveď do toho vlákna |
 
 ### Predpoklady
 
@@ -544,37 +554,58 @@ samostatný nástroj.
 
 ### Problém
 
-Agent A potrebuje od agenta B výsledok. Ak mu píše priamo do vstupu, môže prerušiť jeho beh. Ak čaká v slučke na
-odpoveď, stojí ťah a každé prečítanie kontextu stojí. Ak sa nedohodne, kto na koho čaká, jedna strana čaká zbytočne a
-druhá nevie, že je očakávaná.
+Máš dvoch agentov v trvalých reláciách a prvý potrebuje od druhého výsledok, napríklad nasadenie na testovací stroj.
+Operátor nemá byť poštár, ktorý správy prepisuje z jedného okna do druhého. Keď prvý agent zapíše text priamo do
+vstupu druhého, preruší jeho prebiehajúci beh alebo sa vmieša do toho, čo práve píše človek. Keď na odpoveď čaká
+v slučke, ťah ostáva otvorený a každé ďalšie prečítanie kontextu platíš. A keď sa nedohodnete, kto na koho čaká,
+jedna strana čaká zbytočne a druhá nevie, že ju niekto očakáva.
+
+### Kedy to potrebuješ
+
+Nepotrebuješ to, keď máš jedného agenta. Nepotrebuješ to ani vtedy, keď si agenti píšu komentármi v správcovi úloh
+(kapitola 7) a to stačí, lebo komentár zobudí riešiteľa a úloha nesie stav.
+
+Potrebuješ to pri dvoch a viac agentoch v trvalých reláciách, ktorí si posielajú pokyny a výsledky mimo úloh. Ide
+o súrnu vec, ktorá nepočká na úlohu, o otázku, na ktorú odosielateľ stojí, a o odovzdanie stavu medzi strojmi.
+
+Prečo súbory v adresári a nie fronta alebo databáza. Nepotrebuješ službu, ktorá môže padnúť, a nič sa neinštaluje.
+Správu prečítaš príkazmi `ls` a `cat` a opravíš editorom. Premenovanie príkazom `mv` na jednom disku je atómové,
+takže adresát nikdy neuvidí polovičný súbor. Súbor prežije reštart procesu aj stroja, správa vo fronte v pamäti nie.
+Fronta alebo databáza sa oplatí pri stovkách správ za sekundu. U nás ide o desiatky až okolo sto správ denne
+v schránke jedného agenta.
 
 ### Mechanizmus
 
-Každý agent má schránku, adresár s podadresármi `inbox`, `outbox` a `processed`. Správa je súbor. Zápis ide cez
-skrytý dočasný súbor a `mv`, aby adresát nikdy nečítal polovičný súbor. Meno súboru má tvar
+Každý agent má schránku, adresár s podadresármi `inbox` a `processed`. Správa je súbor v `inbox` adresáta. Zápis ide
+cez skrytý dočasný súbor a `mv`, aby adresát nikdy nečítal polovičný súbor. Meno súboru má tvar
 `<odosielateľ>-[<téma>-]<RRRRMMDD-HHMMSS>-<pid>.md`.
 
-Budič je program, ktorý správy zo schránky pošle do vlákna agenta a presunie do `processed`. Nikdy nepošle správu do
-bežiaceho behu. Správy, ktoré budia, pošle jednou dávkou po krátkom tichom okne, takže správy tesne za sebou idú
-jedným ťahom.
+Budič je program, ktorý správu zo schránky doručí do bežiacej relácie agenta a súbor presunie do `processed`. Beží
+nepretržite vedľa agentov a model nevolá. Nikdy nepošle správu do bežiaceho behu. Správy, ktoré budia, pošle jednou
+dávkou po krátkom tichom okne, takže správy tesne za sebou idú jedným ťahom.
 
-Každá správa, ktorú budič pošle, je jeden ťah modelu a ten znova číta celý kontext. Meranie ukázalo, že vyše polovice
-ťahov nemalo akciu. Preto prvý riadok správy hovorí, čo odosielateľ čaká, a píšu ho skripty, nie model.
+Každá správa, ktorú budič pošle, je jeden ťah modelu a ten znova číta celý kontext. Meranie 19. 10. 2026 ukázalo, že
+36 zo 69 ťahov nemalo akciu. Preto prvý riadok správy hovorí, čo odosielateľ od nej čaká (režim správy), a píšu ho
+skripty, nie model.
 
-| prvý riadok | znamená | budič adresáta | odpoveď |
+| prvý riadok | znamená | budič adresáta | odpoveď na ňu |
 |---|---|---|---|
 | `odpoveď: čakám` | pokyn alebo otázka, odosielateľ stojí na odpovedi | zobudí | povinná, zobudí odosielateľa |
 | `odpoveď: nečakám` | správa nástroja alebo súhrn, výsledok sa prečíta pri ďalšom ťahu | zobudí | ide bez budenia |
 | `odpoveď: na vedomie` | hlásenie, výsledok, potvrdenie | nebudí, drží do ďalšej dávky | nepíše sa |
 
-Skript `bin/ask_agent.sh` píše novú správu ako `čakám`, s voľbou `--vedomie` ako `na vedomie`, iný režim nemá.
-Odpoveď je predvolene `na vedomie`, a keď niečo potrebuje späť, má `--cakam` alebo `--necakam`. Odpoveď `na vedomie`
-na správu `nečakám` odosielateľa nezobudí, preto skript režim `nečakám` pri novej správe odmietne. Na správu `na
-vedomie` sa neodpisuje a potvrdenie "prevzaté" sa neposiela. Práca, ktorá z nej vznikne, je nový pokyn.
+Správa `na vedomie` zobudí len ako odpoveď na správu, na ktorú odosielateľ čaká. Odpoveď `na vedomie` na správu
+`čakám` preto odosielateľa zobudí, odpoveď `na vedomie` na správu `nečakám` nie.
 
-Hlavička správy nesie `odpoveď`, `id`, `od`, `komu`, `téma` a pri odpovedi `k` (id pôvodnej správy). Odpoveď sa páruje
-s pôvodnou podľa `k`, takže meno súboru môže byť ľubovoľné. Agent píše aj z vlákna témy, preto skript správ po
-zápise uloží trasu (kľúč správy a vlákno odosielateľa) a budič podľa nej odpoveď doručí do vlákna témy.
+Skript odoslania píše novú správu ako `čakám`, s voľbou `--vedomie` ako `na vedomie`, iný režim nemá. Skript odpovede
+píše predvolene `na vedomie`, a keď niečo potrebuje späť, má `--cakam` alebo `--necakam`. Odpoveď `na vedomie` na
+správu `nečakám` odosielateľa nezobudí, preto skript odoslania režim `nečakám` pri novej správe odmietne. Na správu
+`na vedomie` sa neodpisuje a potvrdenie "prevzaté" sa neposiela. Práca, ktorá z nej vznikne, je nový pokyn.
+
+Odpoveď sa páruje s pôvodnou správou podľa hlavičky `k:`, takže meno súboru môže byť ľubovoľné. Agent píše aj z vlákna
+témy (vlákno je trvalá relácia agenta v jeho nástroji, vlákno témy je ďalšie vlákno toho istého agenta, ktoré vedie
+jednu tému). Preto skript po zápise uloží trasu odpovede, teda kľúč správy a vlákno odosielateľa, a budič podľa nej
+odpoveď doručí do vlákna témy, nie do hlavného.
 
 Správa agentovi je pracovný príkaz. Pokyn nesie úlohu, kontext, ktorý adresát nemá, a podmienku hotového. Odpoveď nesie
 výsledok, dôkaz (príkaz a jeho výstup) a čo je otvorené. Cesta, riadok alebo commit nahrádza kópiu. Neistota sa píše
@@ -586,22 +617,46 @@ a tak nikto nevie, kto má na ňom konať ani kto čaká.
 
 ### Ako to postaviť
 
-1. Schránky potrebuješ od dvoch agentov, pre jedného nie. Zaveď `<koreň>/<agent>/{inbox,outbox,processed}` s právami podľa skupiny.
-2. Napíš skript odoslania, ktorý zapíše správu cez skrytý `.tmp` a `mv` a vloží hlavičku s režimom, a skript odpovede
-   s hlavičkou `k:` a predvoleným režimom `na vedomie`.
-3. Zisti, ako sa dá správa poslať do bežiacej relácie vo vašom runtime. Ak to nástroj už vie, použi to (globálne
-   pravidlo §6, najprv zisti, či to nástroj už nerobí).
-4. Napíš budič, ktorý nikdy neposiela do bežiaceho behu, dávkuje a rešpektuje režim v prvom riadku.
-5. Napíš pravidlo, že agent po správe `čakám` ukončí ťah a nečaká v slučke. Doplň hook, ktorý zamietne `sleep` v
-   popredí nad desať sekúnd.
+Keď schránky nepotrebuješ (časť "Kedy to potrebuješ"), preskoč celú kapitolu. Inak postupuj v tomto poradí.
 
-Správa:
+#### 1. Adresáre a práva
+
+Pre každého agenta založ `<koreň>/<agent>/inbox` a `<koreň>/<agent>/processed`. Adresár `inbox` má právo `2770`
+(setgid) a spoločnú skupinu, v ktorej sú agenti, ktorí do neho píšu, a používateľ budiča. Meno agenta je malé písmená,
+číslice a podčiarkovník, najviac 31 znakov, začína písmenom. U nás je pri agentovi ešte `outbox` z čias, keď sa
+odpovede čítali z neho. Ak stavíš nanovo, nepotrebuješ ho, odpoveď je obyčajná správa do `inbox` pôvodného
+odosielateľa.
+
+Agent na inom stroji nemá schránku na svojom disku. Schránka je na stroji, kde beží budič, a odosielateľ z druhého
+stroja zapíše súbor cez `ssh` s rovnakým postupom (skrytý `.tmp`, potom `mv`).
+
+#### 2. Formát správy
+
+Hlavička sú riadky na začiatku súboru, potom text správy. Prvý riadok je vždy `odpoveď:`. Správa bez neho sa doručí
+ako budiaca, aby sa dali doručiť aj ručne zapísané správy.
+
+```
+odpoveď: <čakám|nečakám|na vedomie>
+k správe: <režim pôvodnej správy>      (len odpoveď, druhý riadok)
+id: <meno súboru>
+od: <odosielateľ>
+komu: <adresát>
+téma: <téma, pre hlavné vlákno prázdne>
+k: <id pôvodnej správy>                (len odpoveď)
+```
+
+Riadok `id:` je meno súboru. Riadok `k správe:` skript odpovede opíše z prvého riadku pôvodnej správy a budič podľa
+neho rozhodne, či má odpoveď `na vedomie` zobudiť. Budič hlavičku z textu pre model odstráni a dá ju do značky
+(bod 5). Meno súboru musí zodpovedať vzoru `^[a-z][a-z0-9_]{0,30}-[A-Za-z0-9._-]{1,120}$`, budič ostatné súbory
+v `inbox` preskočí. Preskočí aj súbory, ktorých meno začína bodkou alebo končí `.tmp`, to sú rozpísané zápisy.
+
+Príklad správy:
 
 ```
 odpoveď: čakám
-id: agent-a-nasadenie-RRRRMMDD-HHMMSS-4242.md
-od: agent-a
-komu: agent-b
+id: agent_a-nasadenie-20261024-101500-4242.md
+od: agent_a
+komu: agent_b
 téma: nasadenie
 
 Úloha. Nasaď verziu 3 na testovací stroj.
@@ -609,12 +664,145 @@ Kontext. Verzia je v tagu v3. Databázu nemeň.
 Hotovo, keď `curl -sI https://test.example/` vráti 200.
 ```
 
+Príklad odpovede, ktorú agent B napíše po nasadení:
+
+```
+odpoveď: na vedomie
+k správe: čakám
+id: agent_a-nasadenie-20261024-101500-4242.md
+od: agent_b
+komu: agent_a
+téma: nasadenie
+k: agent_a-nasadenie-20261024-101500-4242.md
+
+Hotovo. `curl -sI https://test.example/` vráti `HTTP/2 200`. Otvorené: nič.
+```
+
+#### 3. Skript odoslania
+
+Použitie: `ask_agent.sh [--vedomie] [--k <id>] <adresát> <téma> < sprava.md`. Skript robí tieto kroky.
+
+1. Overí, že adresát aj odosielateľ sú v tvare mena agenta a že `inbox` adresáta existuje. Inak skončí kódom 1
+   a nič nezapíše. Odosielateľ je premenná prostredia s menom agenta.
+2. Odmietne prázdnu správu.
+3. Odmietne voľbu `--necakam` s hláškou, že na odpoveď čakáš a máš nechať predvolené, alebo že hlásenie bez odpovede
+   je `--vedomie`. Dôvod je v tabuľke vyššie, odpoveď `na vedomie` na `nečakám` odosielateľa nezobudí a ten by čakal
+   naprázdno.
+4. Zostaví meno `<odosielateľ>-[<téma>-]<čas>-<pid>.md` a hlavičku. Režim je `čakám`, s `--vedomie` `na vedomie`.
+5. Nastaví `umask 007`, zapíše `.<meno>.tmp`, nastaví mu skupinu `inboxu`, keď ju adresár nededí, a urobí `mv` na
+   konečné meno.
+6. Zapíše trasu (bod 6) a vypíše id správy.
+
+Voliteľne skript pri novej správe overí, že téma je v zozname tém adresáta (súbor vedľa jeho `inbox`), a pri neznámej
+téme vypíše platné témy a nič nepošle. Na začiatok to nepotrebuješ.
+
+#### 4. Skript odpovede
+
+Použitie: `reply.sh [--cakam|--necakam|--vedomie] <id správy> < odpoved.md`. Agent ho volá príkazom, ktorý mu budič
+vypíše v značke správy.
+
+1. Overí tvar id a odmietne prázdnu odpoveď.
+2. Predvolený režim je `na vedomie`. Keď telo odpovede obsahuje riadok začínajúci `Úloha`, `Otázka` alebo `Hotovo:`,
+   a režim nie je zvolený výslovne, skript odmietne zápis. Takéto telo je pokyn, odpoveď `na vedomie` by nezobudila
+   nikoho.
+3. Nájde pôvodnú správu v `processed` (budič ju tam už presunul), vezme jej prvý riadok pre `k správe:` a tému.
+4. Zostaví hlavičku s `k: <id pôvodnej správy>`, `od:` je odpovedajúci agent, `komu:` odosielateľ pôvodnej správy.
+5. Zapíše súbor do `inbox` odosielateľa pôvodnej správy rovnako ako skript odoslania (`.tmp`, `mv`), pod menom
+   `<od>-[<téma>-]<čas>-<pid>.md`. U nás má odpoveď meno z predpôn oboch strán a jadra pôvodného mena. Pre tvoju stavbu
+   to netreba, odpoveď páruje `k:`.
+6. Zapíše trasu (bod 6).
+
+#### 5. Čo musí vedieť tvoj runtime, a ako to robíme my
+
+Budič potrebuje dve veci. Musí vedieť, či agent vo vlákne práve pracuje, a musí vedieť poslať text do jeho relácie tak,
+aby neprerušil prebiehajúci beh. Ak tvoj nástroj nič také nevie, stačí, aby agent pozrel `inbox` na začiatku každého
+ťahu, ale potom správa agenta nezobudí. Takú podobu sme neskúšali.
+
+U nás agenti bežia ako trvalé vlákna v T3 Code a budič robí toto.
+
+1. Stav vlákna číta z HTTP zoznamu vlákien servera. Riadok vlákna nesie id aktívneho behu, stav behu, príznak
+   čakania na schválenie a stav vlákna. Vlákno je zaneprázdnené, keď má aktívny beh, keď čaká na schválenie
+   človekom, keď jeho stav nie je koncový (nečinné vlákno, dokončený, prerušený, zlyhaný alebo zrušený beh) alebo keď
+   skončilo chybou limitu predplatného a čas obnovy ešte nenastal.
+2. Text pošle príkazom `message.dispatch` cez WebSocket. T3 Code 0.1.0 nemá HTTP volanie na správu do vlákna, budič
+   preto vyžiada jednorazový lístok, otvorí WebSocket a pošle príkaz. Príkaz nesie režim doručenia
+   `queue_after_active`, teda zaradiť za aktívny beh. Keby medzi čítaním stavu a odoslaním začal beh (napríklad
+   človek napísal do vlákna), správa sa zaradí za neho a nič neprerušuje.
+3. Príkaz nesie aj `commandId`, ktoré budič odvodí z mien súborov dávky, čísla pokusu a náhodného id dávky. Server si
+   pamätá príjem každého `commandId`, takže opakovanie po páde budiča nevytvorí druhú správu.
+4. Záložne sa dá text poslať do klienta CLI v `tmux` príkazom `tmux send-keys -l` a Enterom ako samostatným
+   krokom. `tmux` nepozná stav behu a nevie, či agent práve nepíše, preto je to len záloha.
+
+Pre tvoj runtime to znamená dve požiadavky. Potrebuješ spôsob, ako zistiť, že relácia práve nepracuje, a spôsob, ako do
+nej vložiť vstup tak, aby sa zaradil za prebiehajúcu prácu, alebo aspoň tak, aby budič počkal na jej koniec. Ak runtime
+nemá idempotentné príkazy ako `commandId`, pád medzi odoslaním a presunom súboru môže správu doručiť dvakrát.
+Presun do `processed` preto rob hneď po úspešnom odoslaní.
+
+#### 6. Budič
+
+Budič je slučka. Jeden priechod robí toto.
+
+1. Prečíta `inbox` (súbory s platným menom, bez bodky na začiatku a bez `.tmp`) a zoradí ich podľa času zmeny.
+   Prázdny `inbox` ukončí priechod.
+2. Pre každú správu zistí cieľové vlákno a či budí. Správa s `odpoveď: čakám` alebo `nečakám` a správa bez riadku budia.
+   Správa `na vedomie` budí, len keď má `k:` na správu, ktorú odosielateľ poslal ako `čakám`, alebo riadok
+   `k správe: čakám`. Inak sa drží.
+3. Cieľové vlákno je vlákno z trasy odpovede (bod 7). Správa bez `k:` alebo bez trasy ide do hlavného vlákna agenta.
+4. Tiché okno. Dávka pre vlákno odíde, keď od poslednej budiacej správy uplynulo `AGENT_BATCH_WAIT_S` (u nás 30 s),
+   alebo od prvej budiacej správy uplynulo `AGENT_BATCH_MAX_WAIT_S` (120 s). Dávka je všetko, čo budí, a odíde jednou
+   správou, takže správy tesne za sebou spotrebujú jeden ťah. Hodnota `0` okno vypne.
+5. Skontroluje, či vlákno pracuje (bod 5). Ak áno, nepošle nič a skúsi to o ďalší interval.
+6. Zostaví text dávky. Najviac 20 budiacich správ, každá do 100 kB, a najviac 10 držaných správ `na vedomie`, každá do
+   4 kB, pod nadpisom "Na vedomie". Každá správa je v značke:
+
+   ```
+   <schranka od="agent_a" tema="nasadenie" id="agent_a-nasadenie-20261024-101500-4242.md" odpoveď="čakám">
+   odpoveď: reply.sh <id> <<'EOF' ... EOF (odosielateľ na ňu čaká)
+
+   Úloha. Nasaď verziu 3 na testovací stroj.
+   </schranka>
+   ```
+
+   Pre správy `na vedomie` je riadok odpovede "odpoveď sa nepíše".
+7. Zapíše dávku do súboru stavu (zoznam súborov, číslo pokusu, id dávky), pošle ju a po prijatí presunie súbory do
+   `processed`. Ak tam súbor s rovnakým menom je, pripíše k menu čas. Potom stav zmaže. Ak server dávku odmietne,
+   zvýši číslo pokusu, aby sa nezopakovalo odmietnuté `commandId`.
+8. Spí `POLL_S` (u nás 5 s). Pri chybe spojenia čaká dvakrát dlhšie, najviac 300 s.
+
+Držaná správa `na vedomie` ostáva v `inbox`, nič sa nemaže. Odíde pod nadpisom s najbližšou budiacou dávkou do toho
+istého vlákna. Správu `na vedomie` staršiu než 24 hodín presunie ranný súhrn do `processed` a vypíše.
+
+#### 7. Trasa odpovede
+
+Trasa rieši problém, že agent píše z vlákna témy a odpoveď má prísť späť tam, nie do hlavného vlákna.
+
+1. Pri zápise správy (a pri odpovedi) skript zistí vlákno, z ktorého agent píše. Použije id relácie, ktoré má proces
+   agenta v prostredí (u nás `CLAUDE_CODE_SESSION_ID`) a ktoré nástroj uvádza pri vlákne. Po čistom kontexte má proces
+   novú reláciu, preto sa id hľadá aj v argumente `--resume` príkazového riadku procesu.
+2. Ak vlákno nie je hlavné, zapíše do súboru `routes.json` v stave budiča záznam s kľúčom správy (meno bez predpôn
+   oboch strán), druhou stranou a vláknom. Záznam starší ako 30 dní vypadne. Pre hlavné vlákno sa záznam nezapíše
+   a starší s tým istým kľúčom sa zmaže.
+3. Budič pri správe s `k:` nájde záznam podľa `k:`. Ak vlákno existuje a nie je archivované, správa ide tam. Inak ide
+   do hlavného vlákna s riadkom `[budič] Správa patrí vláknu <id>, to je archivované, preto je tu.`.
+4. Ak vlákno nenájde skript, správa odíde bez trasy a odpoveď príde do hlavného vlákna. Skript to vypíše.
+
+Naša verzia vie navyše doručiť novú správu k téme do vlákna témy podľa zoznamu tém. Na začiatok to nepotrebuješ.
+
+#### 8. Pravidlá pre agenta a hook
+
+Napíš pravidlo, že agent po odoslaní správy `čakám` ukončí ťah a na odpoveď nečaká, budič mu ju doručí. Doplň hook
+PreToolUse, ktorý zamietne príkaz so `sleep` nad desať sekúnd alebo slučku so `sleep` v popredí. Zamietnutie nesie
+riadok "Správny postup:" (kapitola 6).
+
 ### Náš príklad
 
-Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript správ `bin/ask_agent.sh` s testom
-`hooks/ask_agent.test.mjs` v repe nie je, je viazaný na naše schránky. Budič, skript odpovede a trasy odpovedí sú mimo tohto repa, v repe správcu agentov v
-adresári `runtime/` (súbory `driver.mjs`, `reply.sh`, `route.mjs`, `morning.mjs` a `README.md`, časť "Budenie"). Hook
-proti čakaniu `hooks/no_model_wait.mjs` v repe nie je (v tabuľke "Čo v repe nie je" v `README.md`). Pravidlá pre správy agentom sú v `global/CLAUDE.md`, §2.
+Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript odoslania, skript odpovede, budič
+a trasy sú v našom runtime, ktorý v tomto repe nie je. Ich zverejnenie alebo odkaz na ne je otvorená vec (D0170).
+Zatiaľ ich opisuje tabuľka "Čo v repe nie je" v `README.md`, vrátane toho, čo z nich potrebuješ na stavbu. Ide o
+`bin/ask_agent.sh` (skript odoslania, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (skript odpovede),
+`runtime/driver.mjs` (budič), `runtime/route.mjs` (trasy odpovedí a zoznam tém) a `runtime/README.md` (opis runtime,
+časť "Budenie"). Hook proti čakaniu `hooks/no_model_wait.mjs` v repe nie je. Pravidlá pre správy agentom sú
+v `global/CLAUDE.md`, §2.
 
 ## 9. Delegovanie
 
