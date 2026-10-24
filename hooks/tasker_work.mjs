@@ -30,14 +30,25 @@
 // nemení). Prvý zapisujúci nástroj (Bash, Edit, Write, MultiEdit,
 // NotebookEdit) potom ohlási `tasker work N --thread <relácia>`, najviac raz za
 // 60 minút. Ak je úloha `needs_human` a jej riešiteľ je agent, hook ju najprv
-// vráti do `todo` komentárom od agenta (`tasker comment`, komentár riešiteľa
-// úlohu zobudí do todo a budič ho nepošle späť agentovi). Výnimka: výzva, ktorá
+// vráti do poradia (handoff) komentárom od agenta (`tasker comment`, komentár riešiteľa
+// úlohu zobudí do poradia a budič ho nepošle späť agentovi). Výnimka: výzva, ktorá
 // je správa schránky (`<schranka ...`, napríklad od Taskera k úlohe 482), nie
 // je odpoveď operátora. Hook k číslu uloží príznak `inbox` a pri `needs_human`
 // nepíše komentár ani `work`, otázka na operátora ostáva. Príznak zruší
-// ďalšia výzva bez schránky (s číslom aj bez). Úlohu `todo` s riešiteľom agentom
+// ďalšia výzva bez schránky (s číslom aj bez). Úlohu v poradí (queued, scheduled, handoff, unassigned) s riešiteľom agentom
 // hook pri prvom zápise prevezme príkazom `tasker start N` (úloha Taskera 491). Stav:
 // ${XDG_CACHE_HOME:-$HOME/.cache}/agent-rules/tasker_work_current/<relácia>.
+//
+// Zámok úlohy (úloha Taskera 510): PreToolUse pre Agent so zadaním "úloha N"
+// zamietne spustenie, keď úloha N má v udalostiach `work` (`tasker task show N
+// --json`) živú prácu inej relácie: `start`/`extend` s `until` v budúcnosti a
+// `thread` inej relácie než tá, čo spúšťa sub-agenta, bez neskoršieho `work_stop`
+// toho istého aktéra a bez neskoršej zmeny stavu na done, cancelled, needs_human
+// alebo waiting (tá prácu ukončí). Vlastná relácia prejde. Rovnaká kontrola stojí
+// pri prevzatí v hlavnom vlákne (writeTool, úloha 491): úloha držaná inou reláciou
+// sa neprevezme (bez `start`, komentára a `work`), nástroj prejde a hook
+// vypíše additionalContext, kto úlohu drží. Chyba čítania
+// Taskera, neplatný JSON alebo záznam bez `thread` zámok nespustí (fail open).
 //
 // Meno agenta: AGENT_NAME, inak "# Meno" z PERSONA.md v projekte (malými).
 // TASKER_WORK_CMD (test) nahradí obal `bin/tk` priamym spustením zadaného
@@ -49,6 +60,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { denyTool } from "../lib/deny.mjs";
 
 const TIMEOUT_MS = 2500;
 const TK = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "tk");
@@ -155,15 +167,56 @@ function writeTool(input) {
   const n = String(cur.n);
   try {
     const t = JSON.parse(tk(agent, ["task", "show", n, "--json"]));
+    // Zámok (úloha 510): úlohu drží iná relácia, bez `start`, komentára aj `work`, hlásenie bez zamietnutia nástroja.
+    const h = foreignHolder(t.events, input.session_id);
+    if (h) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext:
+        `Úlohu ${n} drží relácia ${h.thread} do ${new Date(h.until).toISOString()} (udalosť work v Taskeri). Táto relácia ${input.session_id} ju neprevzala (bez tasker start a work). Nechaj ju tej relácii alebo počkaj na jej koniec (\`tk task show ${n} --json\`).` } }));
+      return;
+    }
     if (t.status === "needs_human" && String(t.assignee || "").toLowerCase() === agent) {
       // Správa schránky nie je odpoveď operátora, otázka na neho ostáva.
       if (cur.inbox) return;
-      tk(agent, ["comment", n, "--body", "Pracujem na úlohe vo vlákne, vraciam ju z needs_human do todo."]);
+      tk(agent, ["comment", n, "--body", "Pracujem na úlohe vo vlákne, vraciam ju z needs_human do poradia."]);
     }
-    // Prevzatie (úloha 491): úloha `todo` s riešiteľom agentom ide príkazom `start` do in_progress.
-    if (t.status === "todo" && String(t.assignee || "").toLowerCase() === agent) tk(agent, ["start", n]);
+    // Prevzatie (úloha 491): úloha v poradí s riešiteľom agentom ide príkazom `start` do in_progress.
+    if (["queued", "scheduled", "handoff", "unassigned"].includes(t.status) && String(t.assignee || "").toLowerCase() === agent) tk(agent, ["start", n]);
   } catch {}
   tasker(agent, [n, "--thread", String(input.session_id)]);
+}
+
+// Živá práca inej relácie na úlohe z udalostí Taskera: { thread, until } alebo null.
+export function foreignHolder(events, session, nowMs = Date.now()) {
+  const held = new Map(); // aktér -> { thread, until }
+  const ordered = [...(events || [])].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+  for (const e of ordered) {
+    if (e.kind === "work") {
+      const m = String(e.detail || "").match(/^(start|extend) until (\S+)(?: thread (\S+))?/);
+      const until = m ? Date.parse(m[2]) : NaN;
+      if (!m || !Number.isFinite(until)) continue;
+      const prev = held.get(e.actor);
+      held.set(e.actor, { thread: m[3] || (m[1] === "extend" ? prev?.thread : null) || null, until });
+    } else if (e.kind === "work_stop") held.delete(e.actor);
+    else if (["done", "cancelled", "needs_human", "waiting"].includes(e.to_status)) held.clear();
+  }
+  for (const h of held.values()) if (h.thread && h.thread !== String(session) && h.until > nowMs) return h;
+  return null;
+}
+
+// Zamietne spustenie sub-agenta na úlohe, ktorú drží iná relácia. Vráti true pri zamietnutí.
+function lockedByOther(input, agent, ns) {
+  for (const n of ns) {
+    let t;
+    try { t = JSON.parse(tk(agent, ["task", "show", String(n), "--json"])); } catch { continue; }
+    const h = foreignHolder(t?.events, input.session_id);
+    if (!h) continue;
+    denyTool(
+      `Úlohu ${n} drží relácia ${h.thread} do ${new Date(h.until).toISOString()} (udalosť work v Taskeri). Sub-agent z relácie ${input.session_id} by ju robil súbežne s ňou.`,
+      `nezadávaj úlohu ${n} sub-agentovi, nechaj ju relácii ${h.thread} a pozri \`tk task show ${n} --json\` (udalosti work). Zadaj ju, až keď práca skončí (work_stop, zmena stavu) alebo uplynie čas do.`,
+    );
+    return true;
+  }
+  return false;
 }
 
 function preToolUse(input) {
@@ -173,6 +226,7 @@ function preToolUse(input) {
   const ns = taskNumbers(`${ti.prompt || ""}\n${ti.description || ""}`);
   const agent = agentName(input);
   if (!ns.length || !agent || !input.session_id) return;
+  if (lockedByOther(input, agent, ns)) return;
   const dir = stateDir(input.session_id);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, safeId(input.tool_use_id || `n${Date.now()}`));

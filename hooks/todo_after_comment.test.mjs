@@ -1,6 +1,6 @@
 // Test todo_after_comment.mjs (úloha 425). Dočasná SQLite so schémou Taskera
 // (tasks, comments), TASKER_DB ukazuje do tmp, HOME v tmp. Nevolá živý Tasker.
-// Replay: úloha 390 a 420 (komentár správcu agentov, ostala todo) hook zastaví, ťah bez
+// Replay: úloha 390 a 420 (komentár správcu agentov, ostala v poradí) hook zastaví, ťah bez
 // komentára a úloha po done/wait/block pustí.
 // Spustenie: node --test hooks/todo_after_comment.test.mjs
 import test from "node:test";
@@ -26,7 +26,7 @@ assert.ok(dir.startsWith(tmpdir()) && dir !== dirname(DEFAULT_DB));
 function mkDb(name, tasks, comments) {
   const p = join(dir, name);
   const d = new DatabaseSync(p);
-  d.exec(`CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'todo',
+  d.exec(`CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued',
     assignee TEXT, parent_id INTEGER, priority INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, project TEXT);
     CREATE TABLE comments (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, author_kind TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL);`);
   for (const t of tasks) d.prepare("INSERT INTO tasks (id, title, status, assignee) VALUES (?,?,?,?)").run(...t);
@@ -66,44 +66,51 @@ test("turnStart vezme poslednú správu s textom, nie tool_result", () => {
   ].map((e) => JSON.stringify(e)).join("\n"); }
 });
 
-test("replay 390: komentár v ťahu, podmienka splnená, ostala todo, hook zastaví", () => {
-  const db = mkDb("a.db", [[390, "Rozhodnutia", "todo", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 60000]]);
+test("replay 390: komentár v ťahu, podmienka splnená, ostala v poradí, hook zastaví", () => {
+  const db = mkDb("a.db", [[390, "Rozhodnutia", "queued", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 60000]]);
   const r = run(db, tr());
   assert.equal(r.out.decision, "block");
   assert.match(r.out.reason, /390 \(Rozhodnutia\)/);
   assert.match(r.out.reason, /Správny postup: .*tasker done.*tasker wait.*--reason.*--until.*tasker block.*--by/s);
 });
 
-test("replay 420: komentár v ťahu, ostala todo, hook zastaví", () => {
-  const db = mkDb("b.db", [[420, "Nasadenie", "todo", "spravca-agentov"]], [[420, "spravca-agentov", T0 + 1000]]);
+test("replay 420: komentár v ťahu, ostala v poradí, hook zastaví", () => {
+  const db = mkDb("b.db", [[420, "Nasadenie", "queued", "spravca-agentov"]], [[420, "spravca-agentov", T0 + 1000]]);
   assert.equal(run(db, tr()).out.decision, "block");
 });
 
 test("bežný ťah bez komentára pustí", () => {
-  const db = mkDb("c.db", [[7, "Iná", "todo", "spravca-agentov"]], []);
+  const db = mkDb("c.db", [[7, "Iná", "queued", "spravca-agentov"]], []);
   assert.equal(run(db, tr()).stdout, "");
 });
 
 test("komentár spred ťahu pustí", () => {
-  const db = mkDb("d.db", [[7, "Iná", "todo", "spravca-agentov"]], [[7, "spravca-agentov", T0 - 3600000]]);
+  const db = mkDb("d.db", [[7, "Iná", "queued", "spravca-agentov"]], [[7, "spravca-agentov", T0 - 3600000]]);
   assert.equal(run(db, tr()).stdout, "");
 });
 
+test("každý zo štyroch stavov v poradí hook zastaví (úloha 496)", () => {
+  for (const st of ["queued", "scheduled", "handoff", "unassigned"]) {
+    const db = mkDb(`s-${st}.db`, [[9, "x", st, "spravca-agentov"]], [[9, "spravca-agentov", T0 + 1]]);
+    assert.match(run(db, tr()).stdout, /"decision":\s*"block"|block/, st);
+  }
+});
+
 test("komentár iného autora, cudzia úloha, úloha v inom stave pustí", () => {
-  const db = mkDb("e.db", [[1, "a", "todo", "spravca-agentov"], [2, "b", "todo", "spravca-servera"], [3, "c", "done", "spravca-agentov"], [4, "d", "blocked", "spravca-agentov"], [5, "e", "waiting", "spravca-agentov"]],
+  const db = mkDb("e.db", [[1, "a", "queued", "spravca-agentov"], [2, "b", "queued", "spravca-servera"], [3, "c", "done", "spravca-agentov"], [4, "d", "blocked", "spravca-agentov"], [5, "e", "waiting", "spravca-agentov"]],
     [[1, "spravca-servera", T0 + 1], [2, "spravca-agentov", T0 + 1], [3, "spravca-agentov", T0 + 1], [4, "spravca-agentov", T0 + 1], [5, "spravca-agentov", T0 + 1]]);
   assert.equal(run(db, tr()).stdout, "");
 });
 
 test("stop_hook_active, bez TASKER_USER a neexistujúca DB pustí", () => {
-  const db = mkDb("f.db", [[390, "x", "todo", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 1]]);
+  const db = mkDb("f.db", [[390, "x", "queued", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 1]]);
   assert.equal(run(db, tr(), { input: { stop_hook_active: true } }).stdout, "");
   assert.equal(run(db, tr(), { vars: { TASKER_USER: "" }, input: { cwd: dir } }).stdout, "", "bez mena a bez persony mlčí");
   assert.equal(run(join(dir, "nie-je.db"), tr()).stdout, "", "neexistujúca DB nesmie hodiť pád");
 });
 
 test("vlákno T3 bez TASKER_USER: meno z PERSONA.md v cwd, replay 390 zastaví", () => {
-  const db = mkDb("g.db", [[390, "Rozhodnutia", "todo", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 60000]]);
+  const db = mkDb("g.db", [[390, "Rozhodnutia", "queued", "spravca-agentov"]], [[390, "spravca-agentov", T0 + 60000]]);
   const proj = join(dir, "spravca-agentov-proj");
   mkdirSync(proj, { recursive: true });
   writeFileSync(join(proj, "PERSONA.md"), "# spravca-agentov\n\nRole: x\n");

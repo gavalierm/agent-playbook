@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // todo_after_comment.mjs — úloha agenta, na ktorej napísal komentár, nesmie
-// ostať v stave todo (úloha Taskera 425). Dňa 23. 10. 2026 dvakrát: úloha 390
-// (podmienka hotového splnená) a 420 (nasadená, čaká na skúšku) ostali todo po
+// ostať v poradí (stav queued, scheduled, handoff alebo unassigned, kedysi todo; úloha Taskera 425). Dňa 23. 10. 2026 dvakrát: úloha 390
+// (podmienka hotového splnená) a 420 (nasadená, čaká na skúšku) ostali v poradí po
 // komentári správcu agentov, operátor sa pýtal, prečo stoja.
 //
 // Stop z settings.json prostredia. Nájde úlohy, ktorých riešiteľ je
-// TASKER_USER, v stave todo, s komentárom TASKER_USER od poslednej správy
+// TASKER_USER, v poradí (stavy z READY), s komentárom TASKER_USER od poslednej správy
 // operátora (čas z prepisu relácie), a ťah zastaví s postupom. Tasker číta
 // len na čítanie (node:sqlite readOnly). DB je TASKER_DB, inak DEFAULT_DB;
 // výslovne zadaná DB, ktorá neexistuje, hook mlčky pustí (testy nikdy
@@ -33,7 +33,7 @@ export function turnStart(transcript) {
   return ts;
 }
 
-// Úlohy v todo, riešiteľ = user, komentár od user-a s created_at >= sinceMs.
+// Úlohy v poradí (READY), riešiteľ = user, komentár od user-a s created_at >= sinceMs.
 export async function todoWithComment({ db, user, sinceMs }) {
   const emit = process.emitWarning;
   process.emitWarning = (w, ...a) => (String(w).includes("SQLite") ? undefined : emit.call(process, w, ...a));
@@ -42,7 +42,7 @@ export async function todoWithComment({ db, user, sinceMs }) {
   try {
     d.exec("PRAGMA busy_timeout=2000");
     return d.prepare(
-      `SELECT t.id, t.title FROM tasks t WHERE t.status = 'todo' AND t.assignee = ?
+      `SELECT t.id, t.title FROM tasks t WHERE t.status IN ('queued', 'scheduled', 'handoff', 'unassigned') AND t.assignee = ?
          AND EXISTS (SELECT 1 FROM comments c WHERE c.task_id = t.id AND c.author = ? AND c.created_at >= ?)
        ORDER BY t.id`,
     ).all(user, user, sinceMs).map((r) => ({ ...r }));
@@ -56,7 +56,7 @@ export const POSTUP = (ids) =>
   + "(namiesto `tasker ...`).";
 
 export function reason(rows) {
-  return "Na týchto úlohách si v tomto ťahu napísal komentár a ostali v stave todo, nikto ich neotvorí a vyzerajú ako stojace: "
+  return "Na týchto úlohách si v tomto ťahu napísal komentár a ostali v poradí (queued, scheduled, handoff alebo unassigned), nikto ich neotvorí a vyzerajú ako stojace: "
     + rows.map((r) => `${r.id} (${r.title})`).join("; ") + ".";
 }
 

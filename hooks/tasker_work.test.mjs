@@ -16,7 +16,7 @@ function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), "tasker_work-"));
   const log = join(dir, "calls.log");
   const fake = join(dir, "fake-tasker.sh");
-  writeFileSync(fake, `#!/bin/sh\necho "$TASKER_USER $*" >> "${log}"\n[ "$1 $2" = "task show" ] && echo "{\\"status\\":\\"$FAKE_STATUS\\",\\"assignee\\":\\"spravca-agentov\\"}"\nexit 0\n`);
+  writeFileSync(fake, `#!/bin/sh\necho "$TASKER_USER $*" >> "${log}"\n[ "$1 $2" = "task show" ] && [ -f "${dir}/task-$3.json" ] && { cat "${dir}/task-$3.json"; exit 0; }\n[ "$1 $2" = "task show" ] && echo "{\\"status\\":\\"$FAKE_STATUS\\",\\"assignee\\":\\"spravca-agentov\\"}"\nexit 0\n`);
   chmodSync(fake, 0o755);
   const env = { PATH: process.env.PATH, HOME: dir, XDG_CACHE_HOME: join(dir, "cache"), AGENT_NAME: "spravca-agentov", TASKER_WORK_CMD: fake };
   const calls = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter((l) => l && !l.includes(" task show ")) : []);
@@ -173,7 +173,7 @@ test("obal tk: príkaz pod tasker s TASKER_HOME a TASKER_USER (falošný runuser
   writeFileSync(join(bin, "runuser"), `#!/bin/sh\necho "$@" >> "${log}"\n`);
   chmodSync(join(bin, "runuser"), 0o755);
   run(sb, pre("úloha 414", "tu1"), { TASKER_WORK_CMD: "", TK_HOME: "/nonexistent/tk-home", PATH: `${bin}:${process.env.PATH}` });
-  assert.equal(readFileSync(log, "utf8").trim(), "-u tasker -- env TASKER_HOME=/nonexistent/tk-home TASKER_USER=spravca-agentov tasker work 414 --thread S1");
+  assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").filter((l) => !l.includes(" task show ")), ["-u tasker -- env TASKER_HOME=/nonexistent/tk-home TASKER_USER=spravca-agentov tasker work 414 --thread S1"]);
 });
 
 test("nesprávny vstup: ticho, kód 0", () => {
@@ -238,14 +238,14 @@ test("správa schránky s číslom a needs_human: ani komentár, ani work (chyba
   assert.deepEqual(sb.calls(), []);
 });
 
-test("správa schránky: úloha todo sa prevezme príkazom start, potom work", () => {
+test("správa schránky: úloha handoff sa prevezme príkazom start, potom work", () => {
   const sb = sandbox();
   run(sb, prompt(inboxMsg("úloha #482 pre teba")));
-  run(sb, bash(), { FAKE_STATUS: "todo" });
+  run(sb, bash(), { FAKE_STATUS: "handoff" });
   assert.deepEqual(sb.calls(), ["spravca-agentov start 482", "spravca-agentov work 482 --thread S2"]);
 });
 
-test("úloha v inom stave než todo sa neprevezme, work ako doteraz", () => {
+test("úloha v inom stave než v poradí sa neprevezme, work ako doteraz", () => {
   const sb = sandbox();
   run(sb, prompt(inboxMsg("úloha #482 pre teba")));
   run(sb, bash(), { FAKE_STATUS: "waiting" });
@@ -274,4 +274,90 @@ test("Mac bez tk: výzva aj nástroj ticho, kód 0", () => {
     assert.equal(r.stdout + r.stderr, "");
   }
   assert.deepEqual(sb.calls(), []);
+});
+
+// Zámok úlohy (úloha 510): replay 24. 10. 2026, hlavné vlákno 77a21789 drží úlohu 503,
+// vlákno témy de9b0663 ju zadá sub-agentovi.
+const FAR = "2999-01-01T00:00:00.000Z";
+const PAST = "2000-01-01T00:00:00.000Z";
+const ev = (id, kind, detail, actor = "human:spravca-agentov", to_status = null) => ({ id, kind, detail, actor, to_status });
+function taskJson(sb, n, events) {
+  writeFileSync(join(sb.dir, `task-${n}.json`), JSON.stringify({ id: n, status: "handoff", assignee: "spravca-agentov", events }));
+}
+function runRaw(sb, input) {
+  const r = spawnSync("node", [HOOK], { input: JSON.stringify(input), env: sb.env, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput : null;
+}
+const HELD = [ev(1, "created", null), ev(2, "work", `start until ${FAR} thread 77a21789`)];
+
+test("zámok: Agent z inej relácie na úlohe, ktorú drží iné vlákno, sa zamietne (replay úlohy 503)", () => {
+  const sb = sandbox();
+  taskJson(sb, 503, HELD);
+  const out = runRaw(sb, { ...pre("Pracuj na úloha 503", "tu1"), session_id: "de9b0663" });
+  assert.equal(out.permissionDecision, "deny");
+  assert.match(out.permissionDecisionReason, /Úlohu 503 drží relácia 77a21789 do 2999-01-01T00:00:00\.000Z/);
+  assert.match(out.permissionDecisionReason, /Správny postup:/);
+  assert.deepEqual(sb.calls(), []);
+});
+
+test("zámok: Agent v relácii, ktorá úlohu drží, prejde a ohlási prácu", () => {
+  const sb = sandbox();
+  taskJson(sb, 503, HELD);
+  assert.equal(runRaw(sb, { ...pre("úloha 503", "tu1"), session_id: "77a21789" }), null);
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 503 --thread 77a21789"]);
+});
+
+test("zámok: úloha bez živej práce prejde (bez work, uplynulé until, work_stop, zmena stavu, extend bez threadu vlastnej)", () => {
+  const cases = {
+    bez: [ev(1, "created", null)],
+    uplynule: [ev(2, "work", `start until ${PAST} thread 77a21789`)],
+    stop: [...HELD, ev(3, "work_stop", null)],
+    stav: [...HELD, ev(3, "status", "x", "human:spravca-agentov", "needs_human")],
+    bezThreadu: [ev(2, "work", `start until ${FAR}`)],
+  };
+  for (const [name, events] of Object.entries(cases)) {
+    const sb = sandbox();
+    taskJson(sb, 7, events);
+    assert.equal(runRaw(sb, { ...pre("úloha 7", "tu1"), session_id: "B" }), null, name);
+    assert.deepEqual(sb.calls(), ["spravca-agentov work 7 --thread B"], name);
+  }
+});
+
+test("zámok: stop iného aktéra prácu nekončí, extend zachová vlákno držiteľa", () => {
+  const sb = sandbox();
+  taskJson(sb, 7, [...HELD, ev(3, "work_stop", null, "human:spravca-servera"), ev(4, "work", `extend until ${FAR}`)]);
+  assert.equal(runRaw(sb, { ...pre("úloha 7", "tu1"), session_id: "B" }).permissionDecision, "deny");
+});
+
+test("zámok: výčet úloh, zamietne ju jedna držaná, a Tasker bez odpovede hook nezablokuje (fail open)", () => {
+  const sb = sandbox();
+  taskJson(sb, 9, HELD);
+  assert.equal(runRaw(sb, { ...pre("úloha 8 a 9", "tu1"), session_id: "B" }).permissionDecision, "deny");
+  assert.deepEqual(sb.calls(), []);
+  const sb2 = sandbox();
+  writeFileSync(join(sb2.dir, "task-7.json"), "nie json");
+  assert.equal(runRaw(sb2, { ...pre("úloha 7", "tu1"), session_id: "B" }), null);
+  assert.deepEqual(sb2.calls(), ["spravca-agentov work 7 --thread B"]);
+  const sb3 = sandbox();
+  assert.equal(runRaw({ ...sb3, env: { ...sb3.env, TASKER_WORK_CMD: "/nonexistent/tk" } }, { ...pre("úloha 7", "tu1"), session_id: "B" }), null);
+});
+
+test("zámok pri prevzatí: work relácie A živý, schránka s úlohou N v B, prvý zápis v B: ani start, ani work (replay úlohy 505)", () => {
+  const sb = sandbox();
+  writeFileSync(join(sb.dir, "task-505.json"), JSON.stringify({ id: 505, status: "handoff", assignee: "spravca-agentov", events: [ev(1, "work", `start until ${FAR} thread de9b0663`)] }));
+  const b = (x) => ({ ...x, session_id: "77a21789" });
+  run(sb, b(prompt(inboxMsg("úloha #505 pre teba"))));
+  const out = runRaw(sb, b(bash()));
+  assert.match(out.additionalContext, /Úlohu 505 drží relácia de9b0663 do 2999-01-01T00:00:00\.000Z/);
+  assert.deepEqual(sb.calls(), []);
+  // Druhý zápis do hodiny hlásenie neopakuje.
+  assert.equal(runRaw(sb, b(bash())), null);
+  // Relácia, ktorá úlohu drží, ju prevezme.
+  const sb2 = sandbox();
+  writeFileSync(join(sb2.dir, "task-505.json"), JSON.stringify({ id: 505, status: "handoff", assignee: "spravca-agentov", events: [ev(1, "work", `start until ${FAR} thread de9b0663`)] }));
+  const a = (x) => ({ ...x, session_id: "de9b0663" });
+  run(sb2, a(prompt(inboxMsg("úloha #505 pre teba"))));
+  assert.equal(runRaw(sb2, a(bash())), null);
+  assert.deepEqual(sb2.calls(), ["spravca-agentov start 505", "spravca-agentov work 505 --thread de9b0663"]);
 });
