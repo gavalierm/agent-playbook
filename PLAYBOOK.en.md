@@ -1123,3 +1123,179 @@ script, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (the reply script),
 `runtime/route.mjs` (reply routes and the list of topics) and `runtime/README.md` (the runtime description, part "Waking"
 ("Budenie")). The hook against waiting, `hooks/no_model_wait.mjs`, is not in the repo. The rules for messages to agents are in
 `global/CLAUDE.md`, §2.
+
+## 9. Delegation
+
+### Problem
+
+A strong model that does everything itself is expensive and slow. A cheaper model without supervision makes a mistake that
+nobody catches. A task assigned step by step ties the assigner to every detail. And work done by someone who has no rights
+for it breaks the boundaries of jurisdiction.
+
+### When you need it
+
+You need it when you have at least two agents with different rights (one has root, the other does not), or when you pay for
+models of different prices and want one fitting each piece of work. You also need it when a strong session spends tokens on
+mechanical building that a cheaper model could handle.
+
+You do not need it with one agent and one model. Then delegation has nobody to go to. You also do not need it for work that
+you finish in a few calls. Handing work to a sub-agent costs writing the assignment and reading the result, which does not
+pay off for small work.
+
+### Mechanism
+
+The work is done by the lowest level that has the rights for it. A stronger model designs and verifies, a cheaper one builds.
+A session on the strongest model gives the implementation to a sub-agent on a cheaper model and keeps the design and the
+verification for itself. A stronger sub-agent goes only for design, audit or work that failed with the cheaper one, and the
+reason is written down. A sub-agent is a second session that the main session starts for one partial piece of work. It
+returns to the main session only the result, not its whole conversation, so the main context stays small.
+
+Before each task for an agent, the agent manager takes five steps.
+
+1. It decides which rights the task needs, for example reading, writing in its own repo, root, a sensitive action or a
+   decision.
+2. It picks the lowest agent that the persona allows to do it.
+3. It looks at the open tasks of the chosen agent. For an overloaded one it splits the task or hands it over through its
+   superior.
+4. It writes into the assignment why the task belongs to exactly this agent.
+5. It hands a wait for an outside state to a script without a model, which wakes the agent only at a change.
+
+The assignment states the goal and the done condition, not the steps. The agent does not check the intermediate state, it
+verifies the result. The agent manager verifies finished work itself and does not rely on the agent's message. Access that
+only the manager has (a token, an account) is no reason to do the agent's work. The manager issues the agent a narrow access
+and assigns the work to it. Speed is not a reason either. The sentences "I assigned it to the server administrator" for a
+task that needs no root and "I did it myself, it was faster" are forbidden.
+
+A task carries a number, so it is visible who works on it. The assignment to a sub-agent contains the text "úloha N" (task N;
+our hook matches the Slovak word). A hook before the sub-agent tool starts (PreToolUse for the tools Agent and Task) finds
+the number and announces to the task manager that somebody works on the task. After the sub-agent ends (SubagentStop) it
+closes the record. Without the number in the assignment, the task looks stalled. Before assigning a task to a sub-agent, the
+agent looks at the latest work records on the task, so two do not work on it at once.
+
+### How to build it
+
+1. In the global rules write which model designs and verifies, which builds, and when it is allowed to go higher. In Claude
+   Code you choose the sub-agent model in the call of the Agent tool with the parameter `model`.
+2. In the role of the agent manager write the five steps of choosing an agent and the two forbidden sentences.
+3. In the environment write that an assignment to a sub-agent carries "task N", and write a hook that finds the number. The
+   hook does this.
+   1. In PreToolUse for the tool `Agent` (and the old name `Task`) it finds the number after the word "úloha" (task) in
+      `tool_input.prompt` with a regular expression.
+   2. It announces the work with a task manager command and stores the pair of `tool_use_id` and the task number in the
+      session state file.
+   3. In SubagentStop it does not see the sub-agent's assignment, so it finds the record through the stored file. When no
+      other sub-agent with the same task is left in the session, it closes the work record.
+   4. On error or without a number it stays silent with code 0 and never blocks the tool.
+4. Write a template of the assignment with the goal, the context the addressee lacks, and the done condition. The first line
+   looks like `Task 120. Rename the variable X to Y in the scripts in bin/. Done when grep for X is empty.`
+5. Turn a procedure assigned by hand a second time into a skill with a script. A skill is a file with a description of when
+   to use it, and the script does every step that needs no judgement.
+
+### What it requires from the runtime
+
+- Starting a sub-agent from a session with a model choice. Claude Code provides it through the Agent tool with the parameter
+  `model`.
+- A hook before this tool starts and a hook after the sub-agent ends, whose input carries the assignment and the id.
+- A task manager (chapter 7) into which you can record that somebody works on a task. Without it, the task number in the
+  assignment is only a habit.
+- For the split of rights, machines or users whose rights can be separated (root and the others), and a persona that
+  describes the boundaries of jurisdiction.
+
+### Our example
+
+The rule on models and handing over work is in `global/CLAUDE.md`, §6. Delegation is in `roles/spravca-agentov.md`, part
+"Delegation" ("Delegovanie"), and the instructions to agents in the part "Instructions to agents and fixing" ("Pokyny agentom
+a oprava"). The hook `hooks/tasker_work.mjs` with the test `hooks/tasker_work.test.mjs` shows how the task number is found in
+the assignment. Skills for repeated procedures are in `skills/`. Our `skills/projekt-novy` (creating a web project) is not in
+the repo, it is tied to our accounts and domains.
+
+## 10. Writing
+
+### Problem
+
+Model text has recognisable patterns. Long replies with an introduction, a summary, offers of more work, filler and bold
+labels do not get read. The operator does not find what they need in them and stops reading them. A rule "write briefly"
+without a check gets forgotten.
+
+The second problem is a link that does not work. The agent sends the operator the address of a page that is not running yet,
+or an address on `localhost`, which the operator cannot open on their device.
+
+### When you need it
+
+You need it when you read agent replies every day and they tire you. You also need it when agents write texts that other
+people read (documents, commit messages, comments).
+
+You do not need it for an agent that writes only code and short statuses. A rule on length in the global rules is enough
+then. Add the hook with a cap only when the agent breaks the rule at least twice.
+
+### Mechanism
+
+The writing rules have one source, the skill `unslop`. It applies to every text meant for a human, that is replies,
+documents, commit messages, code comments and decision records. A message to another agent follows the message rules
+(chapter 8), not the readability rules. The operator ranks `unslop` above the other skills.
+
+The core of the skill is one paragraph. Short whole sentences with a verb, active voice, plain words, concrete names, numbers
+and mechanisms instead of impressions. No dashes, typographic quotation marks, emoji or bold labels with a colon. No filler
+and inflated words, no forced triplets and no chatbot phrases. Before handing over, the agent asks what in the text gives
+away AI, and fixes it. The rest of the skill is a catalogue of patterns with fixed rule numbers, so other skills can refer to
+a rule by number.
+
+A SessionStart hook inserts only the core into the context, at start, after `/clear`, on resume and after compaction. The
+whole catalogue would cost thousands of tokens at every start, and the core costs a few hundred. Claude Code inserts at most
+10 000 characters from one hook. If the core is longer than the limit of inserted context allows, the hook reports it and
+exits with code 1, so the repo check catches it before deployment. The first reply of a session announces the line
+`unslop: načítané, hook, verzia <verzia>` (loaded, hook, version), so the operator sees that the core arrived. The version is
+the first eight characters of the checksum of the skill file, which the operator can compare with `shasum -a 256`.
+
+The length of a reply has a cap. A reply to the operator has one to three sentences, namely the verdict, the reason and what
+to do. It is longer only when the operator asks for steps, details or a document. A hook at the end of a reply (Stop) stops
+the reply when it has more than six sentences of prose, a sentence over 35 words, a list item with more than one sentence, a
+link that does not answer today, or a link to localhost. Code blocks, tables, headings and the lines "Waiting for you:" do not
+count as prose. The first line of the reply of an agent with a persona is only its name and a colon, the second is empty.
+
+Details go into a file. The agent saves a file for the operator (a page, a document) in the working directory outside the
+temporary directory, for example `docs/`, and gives its path in the reply. The runtime turns the path into a link that the
+operator opens. The sentence "the file is on the server, you cannot open it" is forbidden.
+
+A plan goes for approval only with verified claims. A Stop hook stops a reply that offers a plan and postpones the
+verification until deployment.
+
+### How to build it
+
+1. Write the skill `skills/unslop/SKILL.md` with the core at the start. The file begins with a header with `name` and
+   `description`, then the heading `## Jadro` (Core) and under it the paragraph of the core. Describe the forbidden patterns
+   concretely and give examples in the language you write in.
+2. Write a SessionStart hook that inserts only the section "Core". The hook does this.
+   1. It reads `SKILL.md` and extracts the text between the heading `## Jadro` and the next heading `## `.
+   2. It computes the checksum of the file and takes the first eight characters as the version.
+   3. It prints the core and a version line to standard output. At SessionStart the output is added to the context.
+   4. If the text is longer than 10 000 characters, it prints an error to standard error and exits with code 1.
+3. In the global rules write a section on writing with a link to the skill and the reply cap.
+4. Write a Stop hook with a cap on sentences and words. The hook does this.
+   1. It takes the agent's last reply from the session transcript.
+   2. It removes code blocks, headings, tables and the lines that do not count as prose.
+   3. It splits the rest into sentences and counts them. It stops the reply when there are more than six sentences or a
+      sentence has more than 35 words.
+   4. It finds `http` and `https` addresses, sends a `HEAD` request to each, and stops the reply when one does not answer or
+      is `localhost`.
+   5. On the second stop in a row (`stop_hook_active`) it stays silent.
+   Start with one cap and add checks when you run into the next problem.
+5. Introduce a directory for the operator's documents and the rule "a reply carries the path, not the content".
+
+### What it requires from the runtime
+
+- A hook at session start whose output is inserted into the context also after clean context, resume and compaction.
+- A hook at the end of a reply that gets the text of the last reply (in Claude Code through the session transcript) and can
+  stop it.
+- A way for a file in the working directory to reach the operator, for example a link made from a path in the interface they
+  use. If the runtime has none, send the file another way and the reply stays short.
+- A network for the link check. Where you have none, turn the link check off (for us the variable `REPLY_GUARD_NO_NET=1`).
+
+### Our example
+
+The skill is `skills/unslop/SKILL.md`, the core is its section "Core" ("Jadro"). `hooks/unslop.mjs` inserts it into the
+context. It is not in the repo, you write your own. The reply cap is held by `hooks/reply_guard.mjs` with the test
+`hooks/reply_guard.test.mjs`. The rules are in `global/CLAUDE.md`, §2 and §5. The rule on files for the operator is in
+`env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). Approved patterns of repeated work are in
+`artifacts/`, and their use is described by `skills/artefakty/SKILL.md`. Neither is in the repo, they are our working
+outputs.
