@@ -763,7 +763,7 @@ Pre úlohu s viac krokmi platí štvorkrokový postup.
 2. Plán. Agent zapíše do komentára plán so štyrmi časťami. Čo robíme (dve až štyri vety), kroky (najviac sedem), čo
    nerobíme (nikdy prázdne) a ako overíme, že to funguje (jedna až tri skúšky). Plán nejde do súboru v repe.
    Schválenie je komentár. Plán schváli zástupca operátora, vyhradenú vec operátor.
-3. Stavba. Krok, ktorý sa nezmestí do jedného behu, je podúloha zreťazená blokérmi.
+3. Stavba. Krok, ktorý sa nezmestí do jedného behu, je podúloha zreťazená blokérmi
    na úlohe. Prácu mimo plánu agent nerobí, zmenu plánu navrhne komentárom a skončí v stave `needs_human`.
 4. Kontrola. Pred uzavretím agent zapíše komentár s tromi odpoveďami s dôkazom. Funguje to (príkaz a jeho výstup)?
    Sedí to s plánom (čo chýba, čo pribudlo, čoho iného sa zmena dotkne)? Je to jednoduché (čo by sa dalo zmazať)?
