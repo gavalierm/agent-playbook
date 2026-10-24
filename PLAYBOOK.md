@@ -589,10 +589,27 @@ Operátor nemôže čítať každú odpoveď. Čo sa dá skontrolovať strojom, 
 
 Zamietnutie bez vysvetlenia je ďalší problém. Model po ňom hádá a každý pokus stojí volanie s celým kontextom.
 
+### Kedy to potrebuješ
+
+Potrebuješ to pri pravidle, ktoré agent porušil aspoň dvakrát, a pri kroku, ktorého následok sa nedá vrátiť (zápis do
+registra mimo skriptu, nebezpečný príkaz gitu, odpoveď s odkazom, ktorý nefunguje). Pri pravidle, ktoré agent
+dodržiava, hook nepíš. Každý hook pridáva kód, ktorý treba udržiavať, a trochu spomaľuje ťah.
+
+Nepotrebuješ to na začiatku. Začni pravidlom vo vete, a keď ho agent poruší, napíš hook na tú jednu chybu.
+
 ### Mechanizmus
 
-Hook je skript, ktorý Claude Code spustí pri udalosti. Dostane JSON na štandardnom vstupe (napríklad `session_id`,
-`cwd`, `transcript_path`, `tool_input`) a výsledok vráti výstupom. Udalosti, ktoré používame:
+Hook je skript, ktorý runtime spustí pri udalosti. Dostane JSON na štandardnom vstupe (napríklad `session_id`,
+`cwd`, `transcript_path`, `tool_input`) a výsledok vráti výstupom alebo kódom skončenia. Pri Claude Code platí toto.
+
+- Kód 0 hovorí, že hook prebehol. Výstup SessionStart a UserPromptSubmit sa pridá do kontextu agenta.
+- Kód 2 zablokuje krok a agent dostane text zo štandardného chybového výstupu.
+- Iný kód je chyba hooku. Krok pokračuje a agent o chybe nevie.
+- Hook môže namiesto toho vypísať JSON. Zamietnutie nástroja (PreToolUse) je
+  `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}`.
+  Zastavenie odpovede (Stop) je `{"decision":"block","reason":"..."}`.
+
+Udalosti, ktoré používame:
 
 | udalosť | kedy beží | čo u nás vymáha |
 |---|---|---|
@@ -602,10 +619,11 @@ Hook je skript, ktorý Claude Code spustí pri udalosti. Dostane JSON na štanda
 | SubagentStop | koniec sub-agenta | `tasker_work.mjs` ukončí záznam práce |
 | Stop | pred koncom odpovede | `reply_guard.mjs` strop a odkazy v odpovedi, `todo_after_comment.mjs` úlohu po komentári, `objection_fix.mjs` uznanú chybu bez opravy |
 
-Každé zamietnutie nesie správny postup. Zásada stojí na jednom helperi. Všetky hooky zamietajú cez `lib/deny.mjs`,
-ktorý vypíše dôvod a riadok "Správny postup: <krok>". Helper odmietne prázdny postup aj nejasné vety ako "skús inak".
-Strážca `lib/deny_check.mjs` beží v kontrole repa a zlyhá na hooku, ktorý zamieta surovým JSON-om, kódom 2 alebo
-`echo` na stderr bez postupu. Pravidlo v pokynoch, ktoré hook stráži, potom stačí krátkou vetou s menom hooku.
+Každé zamietnutie nesie správny postup. Zásada stojí na jednom pomocnom module, cez ktorý zamietajú všetky hooky. Modul
+vypíše dôvod a riadok "Správny postup: <krok>" a odmietne prázdny postup aj nejasné vety ako "skús inak". Agent tak
+nemusí hádať a ušetrí volanie, ktoré by stálo celý kontext. Strážca beží v kontrole repa a zlyhá na hooku, ktorý
+zamieta surovým JSON-om, kódom 2 alebo `echo` na chybový výstup bez postupu. Pravidlo v pokynoch, ktoré hook stráži,
+potom stačí krátkou vetou s menom hooku.
 
 Tri zásady pre vlastný hook.
 
@@ -613,8 +631,9 @@ Tri zásady pre vlastný hook.
 - Hook, ktorý len ohlasuje, nikdy nezablokuje nástroj a pri chybe mlčí s kódom 0.
 - Hook, ktorý drží stav v súbore, ukladá ho po relácii, aby sa relácie neovplyvňovali.
 
-Každý hook má test vedľa seba. Chyba, kvôli ktorej hook vznikol, je v teste ako replay. Test nikdy nesiaha na živú
-databázu ani službu. Hooky čítajúce stav správcu úloh čítajú databázu len na čítanie.
+Každý hook má test vedľa seba. Chyba, kvôli ktorej hook vznikol, je v teste ako replay, teda znovu spustený vstup,
+ktorý chybu spôsobil. Test nikdy nesiaha na živú databázu ani službu. Hooky čítajúce stav správcu úloh čítajú databázu
+len na čítanie.
 
 Zapojenie je v `settings.json`, buď v nastavení prostredia, alebo v `.claude/settings.json` repa agenta. Inštalátor
 najprv odstráni skupiny hookov z našej cesty a potom pridá aktuálne, takže ho možno spúšťať opakovane a starý klon
@@ -622,12 +641,35 @@ nezostane zapojený.
 
 ### Ako to postaviť
 
-1. Napíš helper `lib/deny.mjs` s funkciami na zamietnutie nástroja (PreToolUse), zastavenie odpovede (Stop) a
-   zamietnutie kódom 2. Všetky odmietnu prázdny postup.
-2. Napíš kontrolu, ktorá zlyhá na hooku so surovým zamietnutím.
+1. Napíš pomocný modul na zamietnutie s tromi funkciami. Prvá zamietne nástroj (PreToolUse), druhá zastaví odpoveď
+   (Stop) a tretia zamietne kódom 2. Všetky vezmú dôvod a postup a odmietnu prázdny postup.
+2. Napíš kontrolu, ktorá zlyhá na hooku so surovým zamietnutím. Stačí prehľadať súbory hookov a nájsť
+   `permissionDecision` alebo `process.exit(2)` mimo pomocného modulu.
 3. Začni jedným hookom Stop, ktorý stráži jednu vec, čo sa ti už pokazila.
 4. Pre každý nový hook napíš test s replayom chyby a pridaj ho do kontroly repa.
 5. Zapoj hook v `settings.json` opakovateľným skriptom.
+
+Najmenší hook, ktorý zamietne čakanie v popredí:
+
+```
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+
+let input = {};
+try { input = JSON.parse(readFileSync(0, "utf8")); } catch { process.exit(0); }
+const cmd = input.tool_input?.command ?? "";
+const m = cmd.match(/\bsleep\s+(\d+)/);
+if (m && Number(m[1]) > 10) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason:
+        "Čakanie v popredí drží ťah otvorený a platíš ho.\nSprávny postup: skonči odpoveď a výsledok spracuj v ďalšom ťahu.",
+    },
+  }));
+}
+```
 
 Zapojenie:
 
@@ -635,22 +677,31 @@ Zapojenie:
 {
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node /opt/agent-rules/hooks/reply_guard.mjs" } ] }
+      { "hooks": [ { "type": "command", "command": "node <klon pravidiel>/hooks/reply_guard.mjs" } ] }
     ],
     "PreToolUse": [
       { "matcher": "Bash",
-        "hooks": [ { "type": "command", "command": "node /opt/agent-rules/hooks/no_model_wait.mjs" } ] }
+        "hooks": [ { "type": "command", "command": "node <klon pravidiel>/hooks/no_model_wait.mjs" } ] }
     ]
   }
 }
 ```
 
+### Čo od runtime vyžaduje
+
+- Hooky na udalostiach z tabuľky, ktoré dostanú JSON na vstupe a vedia pridať text do kontextu, zamietnuť nástroj
+  alebo zastaviť odpoveď. Claude Code to robí a popisuje formáty v dokumentácii hookov.
+- Zapojenie v súbore nastavení, ktoré runtime číta pri štarte. Zmena nastavenia sa u Claude Code prejaví v novej
+  relácii, nie vždy v bežiacej.
+- Node.js alebo iný interpreter, v ktorom hook napíšeš. Hook môže byť aj shell skript, ak vstup číta nástrojom na JSON.
+
 ### Náš príklad
 
 Hooky sú v `hooks/*.mjs` a ich testy v `hooks/*.test.mjs`. Helper zamietnutia je `lib/deny.mjs` (pre git hooky
 `lib/deny.sh`), strážca `lib/deny_check.mjs`, rozhodnutie `rozhodnutia/D0141.md`. Zapojenie robí funkcia `settings` v
-`env/server/install.sh`, ktoré v repe nie sú (v tabuľke "Čo v repe nie je" v `README.md`). Hlavičkové komentáre `hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`,
-`hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs` opisujú, čo hook vymáha a čo ho vyvolalo.
+`env/server/install.sh`, ktoré v repe nie sú (v tabuľke "Čo v repe nie je" v `README.md`). Hlavičkové komentáre
+`hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`, `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`
+opisujú, čo hook vymáha a čo ho vyvolalo.
 
 ## 7. Práca je úloha v správcovi úloh
 
