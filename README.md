@@ -1,5 +1,7 @@
 # agent-playbook
 
+Anglická verzia: [README.en.md](README.en.md), návod po anglicky: [PLAYBOOK.en.md](PLAYBOOK.en.md).
+
 Návod, ako postaviť agentov s identitou, pravidlami a kontrolou, a očistené
 kópie súborov z živého súkromného repa pravidiel jedného operátora. Návod
 opisuje, čo sme postavili, prečo a v akom poradí to postaviť u seba. Nie je to
@@ -15,7 +17,8 @@ sú odpoveďou na naše chyby a tvoje budú iné.
 
 | cesta | čo to je |
 |---|---|
-| `PLAYBOOK.md` | samotný návod |
+| `PLAYBOOK.md`, `PLAYBOOK.en.md` | samotný návod, po slovensky a po anglicky |
+| `README.md`, `README.en.md` | mapa repa, po slovensky a po anglicky |
 | `global/CLAUDE.md` | globálne pravidlá všetkých agentov |
 | `roles/` | index rolí `ROLES.md` a pravidlá každej roly |
 | `env/server/CLAUDE.md` | príklad pravidiel prostredia (server s viacerými agentmi) |
@@ -110,7 +113,7 @@ beží ako skript a zlyhá kódom 1.
 
 ## Jazyk
 
-Prvá verzia je po slovensky. Anglický preklad je plánovaný po schválení obsahu.
+Zdroj je po slovensky. Anglický preklad je v `PLAYBOOK.en.md` a `README.en.md`, pri rozdiele platí slovenský text.
 
 ## Ako prispievať
 
