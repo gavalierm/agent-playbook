@@ -23,9 +23,8 @@ what the tool the agent runs in must be able to do. Our example shows paths in t
 version. Chapter 12 is the order of work for the first week.
 
 The scripts without which the harness would not run (the waker, clean context, messages between agents, the task
-manager wrapper) live in the repo `https://github.com/gavalierm/agent-runtime`. The repo is still private and will be
-published after cleanup (D0171). So every mechanism is described in a way that lets you build it without that link. The
-link is only a path where you can read the finished code once it is public.
+manager wrapper) live in the repo `https://github.com/gavalierm/agent-runtime`. The repo is public (D0171). Every mechanism is still described in a way that lets you build it
+without that link. The link is a path where you can read the finished code.
 
 Paths are relative to the repo root unless stated otherwise. This repo is a cleaned copy of the private rules repo that
 runs in our operation. Paths in the "Our example" parts point into this repo where the file exists, and otherwise into
@@ -850,8 +849,7 @@ deputy approves the plan according to `roles/zastupca-operatora.md`. The flow of
 script `bin/uloha-webu.sh` (creates a task for a web agent together with a task for a designer's review) and the hook
 `hooks/web_review.mjs` (rejects everything else) are tied to our task manager and are not in the repo, and the table "What is
 not in the repo" in `README.md` describes them. The task manager itself is not in this repo, it is a separate tool. The
-bridge that delivers task events into mailboxes is in the repo `https://github.com/gavalierm/agent-runtime`, which is still
-private and will be published after cleanup (D0171).
+bridge that delivers task events into mailboxes is in the repo `https://github.com/gavalierm/agent-runtime` (public, D0171).
 
 ## 8. Messages between agents
 
@@ -1116,8 +1114,7 @@ foreground. The rejection carries the line "Correct procedure:" (chapter 6).
 
 The mailbox rules are in `env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). The send script, the
 reply script, the waker and the routes are in our runtime, which is not in this repo. It lives in the repo
-`https://github.com/gavalierm/agent-runtime`, which is still private and will be published after cleanup (D0171). So the
-chapter describes it in a way that does not make you depend on the link. The scripts are also described by the table "What is
+`https://github.com/gavalierm/agent-runtime` (public, D0171). The chapter still describes it in a way that does not make you depend on the link. The scripts are also described by the table "What is
 not in the repo" in `README.md`, including what you need from them to build your own. They are `bin/ask_agent.sh` (the send
 script, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (the reply script), `runtime/driver.mjs` (the waker),
 `runtime/route.mjs` (reply routes and the list of topics) and `runtime/README.md` (the runtime description, part "Waking"
@@ -1419,7 +1416,7 @@ The clean context rules are in `env/server/CLAUDE.md`, part "Mailboxes and the w
 files `bin/kontext.sh`, `lib/kontext.mjs`, `hooks/clear_bridge.mjs` and the waker are tied to our runtime and are not in this
 repo. The same goes for `hooks/context_warning.mjs`, which calls `bin/kontext.sh`. What each does is in the table "What is not
 in the repo" in `README.md`. The waker, the watcher of the other threads and clearing on the agent's word are in the repo
-`https://github.com/gavalierm/agent-runtime`, which is still private and will be published after cleanup (D0171). The rule on
+`https://github.com/gavalierm/agent-runtime` (public, D0171). The rule on
 unfinished work is in `global/CLAUDE.md`, §6. The parts "Continuity" ("Kontinuita") and "Concurrency" ("Súbežnosť") are shown
 by `PERSONA.md` in the agent manager's repo.
 
@@ -1462,6 +1459,5 @@ only from its official page, read in full.
 
 The reasons in this playbook come from practice on one server with one operator. The waker, the task manager wrapper and the
 hook `clear_bridge.mjs` are tied to our runtime. Chapters 7, 8 and 11 describe how they are built so that you can build them
-without our code. Our code is in the repo `https://github.com/gavalierm/agent-runtime`, which is still private and will be
-published after cleanup (D0171). The rest is portable at once, that is the persona in git, the decision register, the mistake
+without our code. Our code is in the repo `https://github.com/gavalierm/agent-runtime` (public, D0171). The rest is portable at once, that is the persona in git, the decision register, the mistake
 loop, hooks with a correct procedure and a task with states.

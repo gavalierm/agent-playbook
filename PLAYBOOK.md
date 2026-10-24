@@ -21,9 +21,8 @@ v ktorom agent beží. Náš príklad ukazuje cesty v tomto repe, kde si hotovú
 na prvý týždeň.
 
 Skripty, bez ktorých by harness nebežal (budič, čistý kontext, správy medzi agentmi, obal správcu úloh), žijú v repe
-`https://github.com/gavalierm/agent-runtime`. Repo je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Každý
-mechanizmus je preto opísaný tak, aby si ho postavil bez odkazu. Odkaz je len cesta, kde si hotový kód prečítaš, keď
-bude verejný.
+`https://github.com/gavalierm/agent-runtime`. Repo je verejné (D0171). Každý mechanizmus je aj tak opísaný tak, aby si ho postavil bez
+odkazu. Odkaz je cesta, kde si hotový kód prečítaš.
 
 Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
 žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
@@ -817,8 +816,7 @@ tok práce". Hooky sú `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`.
 `hooks/tasker_root.mjs`, skript `bin/uloha-webu.sh` (založí úlohu pre agenta webu spolu s úlohou posudku dizajnéra)
 a hook `hooks/web_review.mjs` (zamietne všetko ostatné) sú viazané na náš správca úloh a v repe nie sú, opisuje ich
 tabuľka "Čo v repe nie je" v `README.md`. Samotný správca úloh v tomto repe nie je, je to samostatný nástroj. Most,
-ktorý doručuje udalosti úloh do schránok, je v repe `https://github.com/gavalierm/agent-runtime`, ktoré je zatiaľ
-súkromné a zverejní sa po vyčistení (D0171).
+ktorý doručuje udalosti úloh do schránok, je v repe `https://github.com/gavalierm/agent-runtime` (verejné, D0171).
 
 ## 8. Správy medzi agentmi
 
@@ -1067,8 +1065,7 @@ riadok "Správny postup:" (kapitola 6).
 ### Náš príklad
 
 Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript odoslania, skript odpovede, budič
-a trasy sú v našom runtime, ktorý v tomto repe nie je. Žije v repe `https://github.com/gavalierm/agent-runtime`, ktoré
-je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Kapitola ho preto opisuje tak, aby si nebol na odkaze závislý.
+a trasy sú v našom runtime, ktorý v tomto repe nie je. Žije v repe `https://github.com/gavalierm/agent-runtime` (verejné, D0171). Kapitola ho aj tak opisuje tak, aby si nebol na odkaze závislý.
 Skripty opisuje aj tabuľka "Čo v repe nie je" v `README.md`, vrátane toho, čo z nich potrebuješ na stavbu. Ide o
 `bin/ask_agent.sh` (skript odoslania, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (skript odpovede),
 `runtime/driver.mjs` (budič), `runtime/route.mjs` (trasy odpovedí a zoznam tém) a `runtime/README.md` (opis runtime,
@@ -1350,8 +1347,7 @@ Pravidlá čistého kontextu sú v `env/server/CLAUDE.md`, časť "Schránky a b
 logika `lib/kontext.mjs`. Hooky sú `hooks/context_warning.mjs` a `hooks/clear_bridge.mjs`. Súbory `bin/kontext.sh`,
 `lib/kontext.mjs`, `hooks/clear_bridge.mjs` a budič sú viazané na náš runtime a v tomto repe nie sú. Rovnako
 `hooks/context_warning.mjs`, ktorý volá `bin/kontext.sh`. Čo každý robí, je v tabuľke "Čo v repe nie je" v `README.md`.
-Budič, sledovač ostatných vlákien a čistenie na slovo agenta sú v repe `https://github.com/gavalierm/agent-runtime`,
-ktoré je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Pravidlo nedokončenej práce je v `global/CLAUDE.md`, §6.
+Budič, sledovač ostatných vlákien a čistenie na slovo agenta sú v repe `https://github.com/gavalierm/agent-runtime` (verejné, D0171). Pravidlo nedokončenej práce je v `global/CLAUDE.md`, §6.
 Časti "Kontinuita" a "Súbežnosť" ukazuje `PERSONA.md` v repe správcu agentov.
 
 ## 12. Ako začať u seba
@@ -1392,6 +1388,5 @@ jej oficiálnej stránky prečítanej celej.
 
 Dôvody v tomto playbooku vychádzajú z praxe na jednom serveri s jedným operátorom. Budič, obal pre správcu úloh a hook
 `clear_bridge.mjs` sú viazané na náš runtime. Kapitoly 7, 8 a 11 opisujú ich stavbu tak, aby si ich postavil bez nášho
-kódu. Náš kód je v repe `https://github.com/gavalierm/agent-runtime`, ktoré je zatiaľ súkromné a zverejní sa po vyčistení
-(D0171). Zvyšok je prenosný hneď, teda persona v gite, register rozhodnutí, slučka chyby, hooky so správnym postupom
+kódu. Náš kód je v repe `https://github.com/gavalierm/agent-runtime` (verejné, D0171). Zvyšok je prenosný hneď, teda persona v gite, register rozhodnutí, slučka chyby, hooky so správnym postupom
 a úloha so stavmi.
