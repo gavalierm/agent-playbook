@@ -166,9 +166,20 @@ Pravidlá napísané na jednom mieste sa rozrastú. Pravidlo, ktoré potrebuje k
 a piate znenie sa potom líši od prvého. Pravidlo o role zapísané s menom agenta prestane platiť, keď sa agent premenuje
 alebo rolu prevezme iný. Agent navyše nevie, ktoré z dvoch pravidiel je silnejšie.
 
+Pri zmene pravidla je tretí problém. Relácia, ktorá už beží, nové znenie nevidí. Agent dodržiava staré pravidlo,
+kým ho niekto nerestartuje.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď má pravidlo platiť pre viac než jedného agenta alebo viac než jeden projekt. Potrebuješ to aj pri
+jednom agentovi, ak pracuje na viacerých strojoch a každý z nich má trochu iné prostredie.
+
+Nepotrebuješ to pri jednom agentovi na jednom stroji. Stačí mu jeden súbor s pokynmi a persona. Vrstvy pridaj, keď
+prvýkrát napíšeš to isté pravidlo druhému agentovi. Roly pridaj, až keď máš prácu, ktorú nemá robiť prvý agent.
+
 ### Mechanizmus
 
-Pravidlá majú päť vrstiev od najširšej po najužšiu.
+Pravidlá majú päť vrstiev od najširšej po najužšiu. Užšia vrstva má prednosť pred širšou.
 
 | vrstva | súbor | komu platí |
 |---|---|---|
@@ -178,16 +189,21 @@ Pravidlá majú päť vrstiev od najširšej po najužšiu.
 | persona | `PERSONA.md` v repe agenta | jeden agent |
 | projekt | `CLAUDE.md` projektu | práca v projekte, má prednosť |
 
-Načítanie je tvrdé, nie dobrovoľné. Claude Code načíta `CLAUDE.md` z každého rodiča pracovného priečinka. Globálny
-súbor preto dáš ako symlink do `~/.claude/CLAUDE.md` a súbor prostredia ako symlink do koreňa stromu, pod ktorým agenti
-bežia. Persona sa načíta importom `@PERSONA.md` zo súboru runtime. Roly vloží hook pri štarte relácie.
+Načítanie je tvrdé, nie dobrovoľné. Claude Code načíta súbor `CLAUDE.md` z domovského priečinka používateľa
+(`~/.claude/CLAUDE.md`) a z každého rodiča pracovného priečinka. Globálny súbor preto dáš ako symbolický odkaz do
+`~/.claude/CLAUDE.md` a súbor prostredia ako symbolický odkaz do koreňa stromu, pod ktorým agenti bežia. Persona sa
+načíta importom `@PERSONA.md` zo súboru pre runtime. Roly vloží hook pri štarte relácie.
 
-Hook `identity.mjs` (SessionStart) prečíta z `PERSONA.md` riadok `Role: <slug>, <slug>` a do kontextu vloží súbory
-`roles/<slug>.md`. Agent, ktorého persona rolu neuvádza, jej pravidlá nedostane. Neznámy slug dá upozornenie.
+Hook identity beží pri štarte relácie. Prečíta z `PERSONA.md` riadok `Role: <slug>, <slug>` a do kontextu vloží súbory
+`roles/<slug>.md`. Agent, ktorého persona rolu neuvádza, jej pravidlá nedostane. Neznámy slug dá upozornenie v kontexte
+a hook nespadne. Ten istý hook ohlási aj identitu, teda meno z nadpisu persony a skrátené id relácie.
 
-Zmena pravidiel sa k agentovi dostane aj uprostred relácie. Hook `rules_delta.mjs` (UserPromptSubmit) porovná HEAD
-nasadeného klonu so stavom relácie a pri zmene vloží do kontextu log a diff súborov `global/` a `env/<prostredie>/`.
-Zmena tak platí najneskôr päť minút po pushi a bez reštartu.
+Zmena pravidiel sa k agentovi dostane aj uprostred relácie. Hook pri každom prompte porovná, na ktorom commite je
+nasadený klon pravidiel, s commitom, ktorý videla táto relácia naposledy. Pri rozdiele vloží do kontextu zoznam
+commitov a diff súborov z `global/` a `env/<prostredie>/`. Stav poslednej videnej verzie drží po jednom súbore na
+reláciu, aby sa relácie neovplyvňovali. Prvý prompt relácie len zapíše commit, lebo súbory sa pri štarte načítali
+čerstvé. Zmena tak platí najneskôr päť minút po pushi a bez reštartu, ak sa nasadený klon sám aktualizuje každých päť
+minút.
 
 Pravidlo o role a meno agenta majú každé jedno miesto. Pravidlo píšeš pre rolu alebo skupinu agentov. Kto rolu drží,
 hovorí jediný súbor s mapovaním rolí na mená. Premenovanie agenta je zmena jedného riadku a mena repa, pravidlá sa
@@ -195,22 +211,47 @@ nemenia. Meno patrí len do príkladu alebo do opisu stavu s dátumom. Rola je m
 práva.
 
 Pravidlo patrí na úroveň svojho dosahu. Ak ho potrebuje aj iný agent alebo ak iný agent drží kópiu, patrí do
-globálnych pravidiel, prostredia alebo roly. Kontrola duplikátov hľadá podobné odrážky v zdieľaných súboroch a v
-personách. Hook `own_rule_scope.mjs` pri prvom zápise textu do `CLAUDE.md` alebo `PERSONA.md` agenta zamietne zápis s
-otázkou, či tú vec nerobí aj iný agent. Rovnaký druhý zápis prejde. Globálne pravidlá majú strop slov, ktorý smie len
-klesať. Kratšie pravidlá sa dodržiavajú lepšie.
+globálnych pravidiel, prostredia alebo roly. Dve kontroly to držia. Prvá hľadá duplikáty, teda odrážky v personách,
+ktoré hovoria to isté ako odrážky v zdieľaných súboroch. Druhá je hook, ktorý pri prvom zápise nového textu do
+pravidiel agenta zamietne zápis s otázkou, či tú vec nerobí aj iný agent. Rovnaký druhý zápis prejde, takže hook len
+donúti zastaviť sa.
+
+Globálne pravidlá majú strop slov, ktorý smie len klesať. Kratšie pravidlá sa dodržiavajú lepšie a každé slovo stojí
+tokeny pri každom volaní modelu.
 
 ### Ako to postaviť
 
-1. Napíš `global/CLAUDE.md`. Začni krátko (kapitola 12) a drž ho pod stropom, ktorý si určíš.
-2. Linkni ho: `ln -s <klon>/global/CLAUDE.md ~/.claude/CLAUDE.md`. Riadok v persone vyzerá `Role: zastupca-operatora,
-   spravca-agentov`.
-3. Napíš `env/<prostredie>/CLAUDE.md` pre veci typické pre stroj a linkni ho do koreňa stromu agentov.
+1. Napíš `global/CLAUDE.md`. Začni krátko (kapitola 12) a drž ho pod stropom, ktorý si určíš. Strop je číslo v súbore,
+   napríklad `1500`, a kontrola spočíta slová súboru a zlyhá, keď ich je viac než číslo. Číslo smie len klesať, takže
+   kontrola porovná aj so stavom v predošlom commite.
+2. Linkni ho. Pri Claude Code to je `ln -s <klon pravidiel>/global/CLAUDE.md ~/.claude/CLAUDE.md`. Riadok v persone
+   vyzerá `Role: zastupca-operatora, spravca-agentov`.
+3. Napíš `env/<prostredie>/CLAUDE.md` pre veci typické pre stroj a linkni ho do koreňa stromu agentov, napríklad
+   `ln -s <klon pravidiel>/env/server/CLAUDE.md /home/agenti/CLAUDE.md`.
 4. Pri viac rolách napíš `roles/ROLES.md` ako index a `roles/<slug>.md` na každú. Mapovanie rolí na mená daj do
-   jedného súboru a nikam inam mená nepíš.
-5. Napíš hooky SessionStart (vloží roly) a UserPromptSubmit (vloží diff klonu, stav poslednej videnej verzie ukladaj
-   do súboru po relácii).
-6. Sprav opakovateľný skript nasadenia, ktorý linky a hooky nastaví, a do kontroly repa pridaj test na duplikáty.
+   jedného súboru, napríklad `roles/agents.md`, a nikam inam mená nepíš.
+5. Napíš hook SessionStart, ktorý prečíta riadok `Role:` a vypíše súbory rolí na štandardný výstup. Pri SessionStart
+   sa výstup hooku pridá do kontextu.
+6. Napíš hook UserPromptSubmit s diffom klonu. Hook robí toto.
+   1. Z JSON-u na vstupe vezmi `session_id`.
+   2. Zisti `git rev-parse HEAD` nasadeného klonu.
+   3. Prečítaj súbor stavu pre túto reláciu. Ak neexistuje, zapíš HEAD a skonči bez výstupu.
+   4. Ak sa HEAD zhoduje, skonči. Inak ho zapíš a vypíš `git log --format='%h %s' <stará>..<nová> -- global/ env/<prostredie>/`
+      a `git diff <stará>..<nová> -- global/ env/<prostredie>/`, najviac 20 kB.
+7. Zabezpeč, aby sa klon pravidiel sám aktualizoval. Stačí časovač (cron alebo systemd), ktorý každých päť minút
+   spustí `git fetch origin && git merge --ff-only origin/main`.
+8. Napíš skript nasadenia, ktorý linky, hooky a časovač nastaví opakovateľne.
+9. Pridaj do kontroly repa test na duplikáty. Rozdeľ pravidlá na jednotky (odrážka alebo odsek), zmaž diakritiku,
+   interpunkciu a krátke slová, skráť slová na päť znakov a nahlás dvojicu jednotiek, kde sa zhodujú aspoň tri
+   štvrtiny menšej z nich.
+
+### Čo od runtime vyžaduje
+
+- Načíta pokyny z domovského priečinka používateľa aj zo všetkých rodičov pracovného priečinka, alebo ti dá iný
+  spôsob, ako vložiť globálny súbor do každej relácie.
+- Podporuje hooky pri štarte relácie a pri každom prompte, ktorých výstup sa pridá do kontextu.
+- Dá hooku vstup s id relácie a pracovným priečinkom. Hook podľa id relácie ukladá stav.
+- Importuje súbor zo súboru (`@PERSONA.md`), alebo pridá persony iným spôsobom.
 
 ### Náš príklad
 
@@ -218,7 +259,8 @@ Tabuľka vrstiev je v `README.md`. Index rolí je `roles/ROLES.md`, pravidlá ro
 `roles/spravca-agentov.md`, `roles/pracovny-agent.md` a `roles/dizajner.md`. Hooky sú `hooks/identity.mjs`,
 `hooks/rules_delta.mjs` a `hooks/own_rule_scope.mjs`. Nasadenie robí `env/server/install.sh`, duplikáty hľadá
 `lib/rule_dupes.mjs`, strop slov drží `lib/global_word_cap.txt`. Pravidlo "pokyn v rozpore s pravidlom" je záznam
-`rozhodnutia/D0144.md`. Tieto štyri súbory v repe nie sú, sú viazané na náš runtime alebo súkromné. Čo robia, je v tabuľke "Čo v repe nie je" v `README.md`.
+`rozhodnutia/D0144.md`. Tieto štyri súbory v repe nie sú, sú viazané na náš runtime alebo súkromné. Čo robia, je
+v tabuľke "Čo v repe nie je" v `README.md`.
 
 ## 3. Operátor a zástupca
 
