@@ -1157,6 +1157,17 @@ Náš `skills/projekt-novy` (založenie projektu webu) v repe nie je, je viazan�
 Text modelu má rozpoznateľné vzory. Dlhé odpovede s úvodom, zhrnutím, ponukami práce, vatou a tučnými štítkami sa
 nečítajú. Operátor v nich nenájde, čo potrebuje, a prestane ich čítať. Pravidlo "píš stručne" bez kontroly sa zabúda.
 
+Druhý problém je odkaz, ktorý nefunguje. Agent pošle operátorovi adresu stránky, ktorá ešte nebeží, alebo adresu
+`localhost`, ktorú operátor na svojom zariadení neotvorí.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď čítaš odpovede agentov každý deň a unavujú ťa. Potrebuješ to aj vtedy, keď agenti píšu texty, ktoré
+čítajú iní ľudia (dokumenty, commit správy, komentáre).
+
+Nepotrebuješ to pri agentovi, ktorý píše len kód a krátke stavy. Vtedy stačí pravidlo o dĺžke v globálnych pravidlách.
+Hook so stropom pridaj, až keď agent pravidlo poruší aspoň dvakrát.
+
 ### Mechanizmus
 
 Pravidlá písania majú jeden zdroj, skill `unslop`. Platí pre každý text určený človeku, teda pre odpovede, dokumenty,
@@ -1166,16 +1177,19 @@ nie pravidlami čitateľnosti. Operátor radí `unslop` nad ostatné skilly.
 Jadro skillu je jeden odsek. Krátke celé vety so slovesom, činný rod, obyčajné slová, konkrétne mená, čísla a
 mechanizmy namiesto dojmov. Bez pomlčiek, typografických úvodzoviek, emoji a tučných štítkov s dvojbodkou. Bez výplne
 a nafúknutých slov, bez nútených trojíc a bez chatbotových fráz. Pred odovzdaním sa agent opýta, čo na texte
-prezrádza AI, a opraví to. Zvyšok skillu je katalóg vzorov s pevnými číslami pravidiel.
+prezrádza AI, a opraví to. Zvyšok skillu je katalóg vzorov s pevnými číslami pravidiel, aby sa iné skilly mohli na
+pravidlo odvolať číslom.
 
 Hook SessionStart vloží do kontextu len jadro, pri štarte, po `/clear`, pri obnovení aj po kompakcii. Celý katalóg by
-stál tisíce tokenov pri každom štarte, jadro stojí pár stoviek. Dlhšie jadro, než povolí limit vloženého kontextu,
-hook ohlási a skončí s kódom 1, takže kontrola repa to zachytí pred nasadením. Prvá odpoveď relácie ohlási riadok
-`unslop: načítané, hook, verzia <verzia>`, aby operátor videl, že jadro prišlo.
+stál tisíce tokenov pri každom štarte, jadro stojí pár stoviek. Claude Code vloží z jedného hooku najviac 10 000 znakov.
+Dlhšie jadro, než povolí limit vloženého kontextu, hook ohlási a skončí s kódom 1, takže kontrola repa to zachytí pred
+nasadením. Prvá odpoveď relácie ohlási riadok `unslop: načítané, hook, verzia <verzia>`, aby operátor videl, že jadro
+prišlo. Verzia je prvých osem znakov kontrolného súčtu súboru skillu, ktorý operátor porovná príkazom
+`shasum -a 256`.
 
 Dĺžka odpovede má strop. Odpoveď operátorovi má jednu až tri vety, a to verdikt, dôvod a čo robiť. Dlhšia je len
-vtedy, keď o kroky, podrobnosti alebo dokument operátor požiada. Hook `reply_guard.mjs` odpoveď zastaví, keď má viac
-ako šesť viet prózy, vetu nad 35 slov, položku zoznamu s viac vetami, odkaz, ktorý dnes neodpovedá, alebo odkaz na
+vtedy, keď o kroky, podrobnosti alebo dokument operátor požiada. Hook na konci odpovede (Stop) odpoveď zastaví, keď má
+viac ako šesť viet prózy, vetu nad 35 slov, položku zoznamu s viac vetami, odkaz, ktorý dnes neodpovedá, alebo odkaz na
 localhost. Bloky kódu, tabuľky, nadpisy a riadky "Čaká na teba:" sa do prózy nepočítajú. Prvý riadok odpovede agenta s
 personou je len jeho meno a dvojbodka, druhý je prázdny.
 
@@ -1183,20 +1197,41 @@ Podrobnosti idú do súboru. Súbor pre operátora (stránku, dokument) agent ul
 adresára, napríklad `docs/`, a v odpovedi uvedie jeho cestu. Runtime z cesty urobí odkaz, ktorý operátor otvorí.
 Zakázaná veta je "súbor je na serveri, neotvoríš ho".
 
-Plán sa dáva na schválenie len s overenými tvrdeniami. Hook `reply_guard.mjs` zastaví odpoveď, ktorá ponúka plán a
-overenie odkladá na nasadenie.
+Plán sa dáva na schválenie len s overenými tvrdeniami. Hook Stop zastaví odpoveď, ktorá ponúka plán a overenie odkladá
+na nasadenie.
 
 ### Ako to postaviť
 
-1. Napíš skill `unslop` s jadrom na začiatku. Zakázané vzory opíš konkrétne a daj príklady v jazyku, v ktorom píšeš.
-2. Napíš hook SessionStart, ktorý vloží len sekciu "Jadro", a skontroluj, že sa zmestí do limitu vloženého kontextu.
+1. Napíš skill `skills/unslop/SKILL.md` s jadrom na začiatku. Súbor začína hlavičkou s `name` a `description`, potom
+   nadpis `## Jadro` a pod ním odsek jadra. Zakázané vzory opíš konkrétne a daj príklady v jazyku, v ktorom píšeš.
+2. Napíš hook SessionStart, ktorý vloží len sekciu "Jadro". Hook robí toto.
+   1. Prečíta `SKILL.md` a vytiahne text medzi nadpisom `## Jadro` a ďalším nadpisom `## `.
+   2. Spočíta kontrolný súčet súboru a vezme prvých osem znakov ako verziu.
+   3. Vypíše jadro a riadok o verzii na štandardný výstup. Pri SessionStart sa výstup pridá do kontextu.
+   4. Ak je text dlhší než 10 000 znakov, vypíše chybu na chybový výstup a skončí kódom 1.
 3. Do globálnych pravidiel napíš sekciu o písaní s odkazom na skill a stropom odpovede.
-4. Napíš hook Stop so stropom viet a slov. Začni jedným stropom a kontroly pridávaj, keď narazíš na ďalší problém.
+4. Napíš hook Stop so stropom viet a slov. Hook robí toto.
+   1. Vezme poslednú odpoveď agenta z prepisu relácie.
+   2. Odstráni bloky kódu, nadpisy, tabuľky a riadky, ktoré sa do prózy nepočítajú.
+   3. Rozdelí zvyšok na vety a spočíta ich. Zastaví odpoveď, keď je viet viac než šesť alebo má veta viac než 35 slov.
+   4. Nájde adresy `http` a `https`, pošle na každú dotaz `HEAD` a zastaví odpoveď, keď niektorá neodpovedá alebo je to
+      `localhost`.
+   5. Pri druhom zastavení v rade (`stop_hook_active`) mlčí.
+   Začni jedným stropom a kontroly pridávaj, keď narazíš na ďalší problém.
 5. Zaveď priečinok pre dokumenty operátora a pravidlo "odpoveď nesie cestu, nie obsah".
+
+### Čo od runtime vyžaduje
+
+- Hook pri štarte relácie, ktorého výstup sa vloží do kontextu aj po čistom kontexte, obnovení a kompakcii.
+- Hook na konci odpovede, ktorý dostane text poslednej odpovede (u Claude Code cez prepis relácie) a môže ju zastaviť.
+- Spôsob, ako sa súbor v pracovnom priečinku dostane k operátorovi, napríklad odkaz z cesty v rozhraní, ktoré používa.
+  Ak ho runtime nemá, pošli súbor inou cestou a odpoveď zostane krátka.
+- Sieť pre kontrolu odkazov. Kde ju nemáš, kontrolu odkazov vypni (u nás premenná `REPLY_GUARD_NO_NET=1`).
 
 ### Náš príklad
 
-Skill je `skills/unslop/SKILL.md`, jadro je jeho sekcia "Jadro". Do kontextu ho vkladá `hooks/unslop.mjs`, ktorý v repe nie je, píšeš si ho sám. Strop odpovede drží
+Skill je `skills/unslop/SKILL.md`, jadro je jeho sekcia "Jadro". Do kontextu ho vkladá `hooks/unslop.mjs`, ktorý v repe nie je,
+píšeš si ho sám. Strop odpovede drží
 `hooks/reply_guard.mjs` s testom `hooks/reply_guard.test.mjs`. Pravidlá sú v `global/CLAUDE.md`, §2 a §5. Pravidlo
 súborov pre operátora je v `env/server/CLAUDE.md`, časť "Schránky a budič". Schválené vzory opakovanej práce sú v
 `artifacts/` a ich používanie opisuje `skills/artefakty/SKILL.md`. Ani jedno v repe nie je, sú to naše pracovné výstupy.
