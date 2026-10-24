@@ -63,6 +63,8 @@ načíta, skontroluje a opraví.
 | riešiteľ | agent alebo človek, ktorý úlohu robí a ktorého správca úloh zobudí pri zmene |
 | podmienka hotového | zápis v úlohe, podľa ktorého sa dá rozhodnúť, či je hotová, najlepšie príkaz a jeho očakávaný výstup |
 | blokér | väzba "táto úloha stojí na tamtej" s povinným dôvodom, po uzavretí tamtej sa táto odblokuje |
+| čistý kontext | nová relácia bez rozhovoru, ktorú agent začne z toho, čo je zapísané v súboroch a v správcovi úloh |
+| odovzdávka | malý súbor so súhrnom stavu a ďalším krokom, ktorý agent zapíše pred čistením a ktorý sa vloží do novej relácie |
 
 ### Predpoklady
 
@@ -1244,53 +1246,113 @@ Kontext relácie rastie a každé volanie modelu ho číta celý. Dlhá relácia
 Čistenie kontextu zasa zmaže všetko, čo agent vedel. Ak stav nie je zapísaný, agent po čistení pracuje naslepo alebo
 sa pýta operátora na to, čo už bolo hotové.
 
+### Kedy to potrebuješ
+
+Potrebuješ to, keď relácie bežia hodiny a dni, keď platíš za každé čítanie kontextu a keď vidíš, že agent po dlhej práci
+zabúda zadanie. Potrebuješ to aj vtedy, keď chceš, aby agent po čistení pokračoval bez operátora.
+
+Nepotrebuješ to pri krátkych reláciách, ktoré skončia samy. Samotný zápis stavu do pamäte a gitu (prvá časť kapitoly)
+potrebuješ vždy. Automatické čistenie podľa pokynu agenta (časť "Automatické čistenie") pridaj, až keď ťa prvé
+ručné čistenie unaví. Do tej doby stačí, že operátor napíše `/clear` sám.
+
 ### Mechanizmus
 
 Stav práce je v súboroch, nie v kontexte. Pamäť je v gite. Stav témy je úloha s komentármi a históriou v správcovi
 úloh, nie súbor v gite. Do gitu idú len persona, pravidlá, rozhodnutia a kód. Nedokončená práca na konci ťahu ide do
 pamäte, commitne sa a pushne. Zakázaná veta je "prinesiem to v ďalšej relácii".
 
-Čistý kontext sa robí po hotovom logickom celku práce, nie uprostred úlohy. Postup má štyri kroky.
+Čistý kontext je nová relácia bez rozhovoru, ktorú agent začne z toho, čo je v súboroch. Robí sa po hotovom logickom
+celku práce, nie uprostred úlohy. Postup má štyri kroky.
 
 1. Agent zapíše stav do pamäte a úlohy.
 2. Commitne a pushne.
-3. Ukončí odpoveď riadkom, ktorý budič pozná. U nás ho vypíše `bin/kontext.sh spanok --stav "<súhrn>"`.
-4. Budič pošle do toho istého vlákna príkaz `/clear` a model sa nevolá.
+3. Ukončí odpoveď riadkom, ktorý pozná program sledujúci relácie. Riadok vypíše skript odovzdávky.
+4. Program pošle do toho istého vlákna príkaz `/clear` a model sa nevolá. Čistenie nestojí ťah modelu.
 
-Voľba `pokracuj --dalej "<ďalší krok>"` sa použije len vtedy, keď ďalší krok nečaká na nikoho. Budič po čistení pošle
-len ten krok. Štart relácie (fetch, rebase, stav) po čistení urobí hook, takže model nečíta pamäť ani nerobí fetch,
-kým to práca nepotrebuje. Hook prečíta odovzdávku od `kontext.sh`, zmaže ju a vloží do novej relácie.
+Odovzdávka je malý súbor, v ktorom agent odovzdá novej relácii súhrn stavu a prípadne ďalší krok. Skript odovzdávky
+vypíše riadok `HOTOVO-KONTEXT <režim> <kľúč>`. Režim `spanok` len vyčistí kontext. Režim `pokracuj` po čistení pošle
+agentovi ešte jednu správu s ďalším krokom a použije sa len vtedy, keď ďalší krok nečaká na nikoho. Kľúč je náhodný
+reťazec, ktorý spája riadok s odovzdávkou, aby citát slova v bežnom texte nič nespustil.
+
+Po čistení sa model nevolá. Štart relácie (fetch, rebase, stav) urobí hook. Hook prečíta odovzdávku, zmaže ju
+a vloží do novej relácie ako text, takže model nečíta pamäť ani nerobí fetch, kým to práca nepotrebuje.
 
 Skript odmietne čistenie (kód 1), keď úloha agenta čaká a agent na nej komentoval po vstupe do čakania. Agent najprv
 zmení stav úlohy (uzavrie ju, obnoví ju alebo nastaví čakanie s novým dôvodom) a až potom spustí čistenie. Inak by
 výsledok, na ktorý úloha čakala, zostal nespracovaný.
 
-Hranicu kontextu stráži hook UserPromptSubmit `context_warning.mjs`. Sčíta vstupné tokeny poslednej odpovede a nad
-hranicou 80 tisíc tokenov pridá do kontextu pokyn na čistý kontext. Pod hranicou mlčí. Hook `clear_bridge.mjs`
-(SessionStart po `/clear`) rieši vlastnosť nášho runtime, v ktorom by sa po `/clear` vrátil starý kontext. U teba sa
-to môže správať inak.
+Hranicu kontextu stráži hook, ktorý beží pri každom prompte. Sčíta vstupné tokeny poslednej odpovede modelu a nad
+hranicou 80 tisíc tokenov pridá do kontextu pokyn na čistý kontext. Pod hranicou mlčí.
 
-Agent, ktorý beží na dvoch miestach (hlavné vlákno a behy úloh), zdieľa pamäť, manuály a skilly cez git, preto po ich zmene
-commit a push idú hneď. Čakanie na vonkajší stav robí skript, ktorý agenta zobudí až pri zmene, nie opakovaná kontrola modelom.
+Agent, ktorý beží na dvoch miestach (hlavné vlákno a behy úloh v inom klone), zdieľa pamäť, manuály a skilly cez git,
+preto po ich zmene commit a push idú hneď. Čakanie na vonkajší stav robí skript, ktorý agenta zobudí až pri zmene, nie
+opakovaná kontrola modelom.
 
 ### Ako to postaviť
 
+#### Zápis stavu (vždy)
+
 1. Do persony napíš sekciu "Kontinuita" s pravidlom štartu (fetch, rebase, commity ostatných agentov) a konca (stav do
    pamäte, commit, push).
-2. Napíš skript, ktorý uloží odovzdávku a vypíše riadok s režimom čistenia, napríklad `bin/kontext.sh spanok --stav
-   "<súhrn>"`. Musí odmietnuť čistenie, keď úloha čaká.
-3. Napíš hook UserPromptSubmit, ktorý nad hranicou tokenov pridá pokyn na čistenie.
-4. Napíš hook SessionStart, ktorý po čistení urobí štart relácie a vloží odovzdávku.
-5. Do pravidiel napíš, že čistenie ide po logickom celku a nie uprostred úlohy.
+2. Do pravidiel napíš, že čistenie ide po logickom celku a nie uprostred úlohy.
+
+#### Hranica kontextu
+
+3. Napíš hook UserPromptSubmit. Prepis relácie je súbor, ktorého cestu hook dostane vo vstupe (`transcript_path`),
+   jeden JSON na riadok. Hook prejde riadky s poľom `usage`, z posledného zoberie `input_tokens`,
+   `cache_read_input_tokens` a `cache_creation_input_tokens` a sčíta ich. Pod 80 000 mlčí. Nad hranicou vypíše
+   pokyn na čistenie. Pokyn povie, kedy čistiť (po hotovom celku, nie uprostred úlohy) a aký riadok napísať.
+
+#### Ručné čistenie (najjednoduchšia podoba)
+
+4. Napíš skript odovzdávky. Použitie `kontext.sh spanok|pokracuj [--dalej "<krok>"] [--stav "<súhrn>"]`. Zapíše súbor
+   `<priečinok stavu>/<id relácie>.json` s právami `600` (najprv do skrytého súboru, potom `mv`) s poľami `key`
+   (osem náhodných bajtov v hexadecimálnom zápise), `rezim`, `dalej`, `stav`, `cwd` a `at`. Vypíše riadok
+   `HOTOVO-KONTEXT <režim> <kľúč>`. Odmietne čistenie, keď úloha agenta čaká.
+5. Napíš hook SessionStart, ktorý beží, keď `source` vo vstupe je `clear`. Hook robí toto.
+   1. V `cwd` spustí `git fetch origin` a pri čistom strome `git rebase origin/main`. Nikdy `git pull` ani
+      `git stash`. Chybu ohlási v texte a reláciu nezastaví.
+   2. Prečíta odovzdávku podľa id relácie a zmaže ju.
+   3. Vypíše stav, ďalší krok a výsledok fetchu a rebase, aby sa vložili do novej relácie.
+6. Operátor napíše `/clear` po tom, čo agent vypíše riadok. Novú reláciu tak dostane s odovzdávkou.
+
+#### Automatické čistenie
+
+7. Napíš program, ktorý sleduje relácie agentov. Keď relácia dokončí odpoveď, prečíta jej posledný neprázdny riadok.
+   Riadok je pokyn len vtedy, keď je to presne slovo `HOTOVO-KONTEXT`, prípadne s režimom `spanok` alebo `pokracuj`
+   a s kľúčom z 8 až 64 hexadecimálnych znakov. Citát slova inde v texte nič nespustí.
+8. Pri režime `pokracuj` program overí, že existuje nespotrebovaná odovzdávka s týmto kľúčom. Ak nie, správa sa ako
+   `spanok` a ohlási výstrahu.
+9. Program skontroluje, že relácia nepracuje, a pošle jej príkaz `/clear`. Tesne pred odoslaním ešte raz overí stav,
+   lebo medzitým mohol začať nový beh. Pri `pokracuj` po čistení pošle jedinú správu s ďalším krokom a označí odovzdávku
+   za použitú.
+10. Zapíš si stav programu do súboru, aby pád medzi `/clear` a pokračovaním nezostal nedokončený. Správy majú
+    identifikátor príkazu, takže opakovanie po páde nevytvorí druhé čistenie (kapitola 8).
+
+### Čo od runtime vyžaduje
+
+- Spôsob, ako relácii z programu poslať `/clear`. My ho posielame cez server T3 Code, ktorý agentov spúšťa a príkaz
+  odovzdá ich relácii. Iný spôsob sme neskúšali. Ak ho tvoj runtime nemá, ostáva ručné čistenie.
+- Spôsob, ako zistiť, že relácia nepracuje (kapitola 8, časť "Čo musí vedieť tvoj runtime").
+- Hook pri štarte relácie, ktorý vie povedať, že štart je po čistení (u Claude Code pole `source` s hodnotou `clear`).
+- Hook pri prompte, ktorý vidí prepis relácie a počet tokenov poslednej odpovede.
+- Čistenie, ktoré naozaj zahodí starý rozhovor. Po prvom čistení to skús tak, že sa agenta spýtaš na fakt z predošlého
+  rozhovoru a nezapísaný do pamäte. Ak ho vie, čistenie nefunguje, ako má.
+
+U nás čistenie nefungovalo. T3 Code si pri vlákne drží id relácie z prvého štartu a každý ďalší proces spustí s
+`--resume` na ňu. `/clear` to id nezmení a starý kontext sa vrátil. Hook `clear_bridge.mjs` preto pri `source` `clear`
+nájde pôvodné id v príkaze rodičovského procesu, odloží starý prepis ako zálohu a na jeho miesto dá symbolický odkaz na
+prepis novej relácie. Ďalší `--resume` tak načíta čistý kontext. U teba sa to môže správať inak, preto skúška vyššie.
 
 ### Náš príklad
 
 Pravidlá čistého kontextu sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript je `bin/kontext.sh`, jeho
-logika `lib/kontext.mjs`. Hooky sú `hooks/context_warning.mjs` a `hooks/clear_bridge.mjs`. Súbory `bin/kontext.sh`, `lib/kontext.mjs`,
-`hooks/clear_bridge.mjs` a budič sú viazané na náš runtime a v tomto repe nie sú. Rovnako `hooks/context_warning.mjs`, ktorý volá
-`bin/kontext.sh`. Čo každý robí, je v tabuľke "Čo v repe nie je" v `README.md`. Pravidlo
-nedokončenej práce je v `global/CLAUDE.md`, §6. Časti "Kontinuita" a "Súbežnosť" ukazuje `PERSONA.md` v repe správcu
-agentov. Dozor nad vláknami a budič čistého kontextu sú v jeho adresári `runtime/`.
+logika `lib/kontext.mjs`. Hooky sú `hooks/context_warning.mjs` a `hooks/clear_bridge.mjs`. Súbory `bin/kontext.sh`,
+`lib/kontext.mjs`, `hooks/clear_bridge.mjs` a budič sú viazané na náš runtime a v tomto repe nie sú. Rovnako
+`hooks/context_warning.mjs`, ktorý volá `bin/kontext.sh`. Čo každý robí, je v tabuľke "Čo v repe nie je" v `README.md`.
+Budič, sledovač ostatných vlákien a čistenie na slovo agenta sú v repe `https://github.com/gavalierm/agent-runtime`,
+ktoré je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Pravidlo nedokončenej práce je v `global/CLAUDE.md`, §6.
+Časti "Kontinuita" a "Súbežnosť" ukazuje `PERSONA.md` v repe správcu agentov.
 
 ## 12. Ako začať u seba
 
