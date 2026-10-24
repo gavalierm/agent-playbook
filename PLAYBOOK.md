@@ -475,11 +475,23 @@ Agent urobí chybu, operátor ho opraví, agent povie "máš pravdu" a o týžde
 pamäte alebo do rozhovoru neprežije. Oprava, ktorá nemení súbor riadiaci správanie, nie je oprava. A prosba o väčšiu
 opatrnosť chybu nezablokuje.
 
+Keď chyby nikto nezapisuje, nevidíš, ktoré sa opakujú. Opakovaná chyba je signál, že pravidlo alebo kontrola chýba,
+a bez záznamu ho nezachytíš.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď sa ti tá istá chyba vráti druhýkrát, aj keď ju agent už raz uznal. Potrebuješ to aj vtedy, keď
+agentovi veríš na slovo a neskôr zistíš, že tvrdil, čo neoveril.
+
+Nepotrebuješ to, kým agent robí jednorazové úlohy a chyby nemajú dôsledok. Aj vtedy ale pomôže prvý krok kapitoly,
+teda definícia chyby v pravidlách. Skript, register a hook pridaj, až keď máš prvú opakovanú chybu.
+
 ### Mechanizmus
 
 Slučka má päť krokov. Operátor namietne. Agent námietku overí a prijme. Opraví súbor, ktorý správanie riadi, a
 commitne. Zapíše chybu do registra skriptom. Zavedie kontrolu, ktorá chybu zablokuje, najneskôr pri druhom výskyte
-triedy.
+triedy. Trieda chyby je krátky kľúč pre jednu príčinu, napríklad `neoverene-tvrdenie`. Rovnaká príčina je rovnaká
+trieda aj pri inom konkrétnom prípade.
 
 Za chybu sa považuje nepravdivé tvrdenie, krok, ktorý nebol agentov, zbytočná akcia operátora, prijatá námietka,
 oprava vyžiadaná dvakrát alebo škoda na živom systéme. Každá chyba agenta je chyba procesu. Agent nájde nástroj,
@@ -491,9 +503,9 @@ zakázanou vetou. Persona nesie krátky riadok o incidente. Mená z incidentu pa
 pravidla roly.
 
 Najsilnejšia oprava je kontrola, ktorá na chybe zlyhá. Je to test, hook alebo skript. Pred vyhlásením opravy sa chyba
-zopakuje a kontrola sa ukáže, ako zlyháva. Replay nikdy nesiaha na živý systém a najprv overí, že nemôže spadnúť na
-živú cestu, schránku alebo službu. Po zmene hodnoty, voľby alebo cesty agent nájde starú hodnotu príkazom `grep -rn` a
-opraví každý zásah, aj v dokumentoch a komentároch.
+zopakuje (replay) a kontrola sa ukáže, ako zlyháva. Replay nikdy nesiaha na živý systém a najprv overí, že nemôže
+spadnúť na živú cestu, schránku alebo službu. Po zmene hodnoty, voľby alebo cesty agent nájde starú hodnotu príkazom
+`grep -rn` a opraví každý zásah, aj v dokumentoch a komentároch.
 
 Mechanickú časť robí `bin/chyba.sh`. Prijme triedu chyby a súbor, ktorý správanie riadi, a urobí štyri veci.
 
@@ -506,13 +518,20 @@ Mechanickú časť robí `bin/chyba.sh`. Prijme triedu chyby a súbor, ktorý sp
 
 Hlásenie agent vloží do najbližšej odpovede operátorovi, aj keď sa nepýta.
 
-Slučku vynucuje hook `objection_fix.mjs` (Stop). Prečíta poslednú odpoveď a príkazy ťahu. Keď odpoveď uznáva chybu
-(frázy ako "máš pravdu" alebo "moja chyba") a v ťahu nebežal `chyba.sh`, odpoveď zastaví. Zastaví ju aj vtedy, keď v
-ťahu chýba commit súboru, ktorý agenta riadi, alebo keď odpoveď nenesie číslo commitu. Pri druhom zastavení v rade
-mlčí, aby sa nezacyklil.
+Slučku vynucuje hook, ktorý beží pred koncom odpovede (Stop). Prečíta poslednú odpoveď a príkazy ťahu. Keď odpoveď
+uznáva chybu (frázy ako "máš pravdu" alebo "moja chyba") a v ťahu nebežal `chyba.sh`, odpoveď zastaví. Zastaví ju
+aj vtedy, keď v ťahu chýba commit súboru, ktorý agenta riadi, alebo keď odpoveď nenesie číslo commitu. Pri druhom
+zastavení v rade mlčí, aby sa nezacyklil.
 
-Správca agentov robí navyše šesťkrokový postup zlepšovania. Nájde súbor a riadok, ktorý chýbal alebo klamal, určí jednu
-príčinu v systéme, napíše opravu s kontrolou, nasadí ju, zopakuje scenár, v ktorom problém vznikol, a zapíše rozhodnutie.
+Správca agentov robí navyše postup zlepšovania v šiestich krokoch.
+
+1. Nájde súbor a riadok, ktorý chýbal alebo klamal.
+2. Určí jednu príčinu v systéme.
+3. Napíše opravu s kontrolou.
+4. Nasadí ju.
+5. Zopakuje scenár, v ktorom problém vznikol.
+6. Zapíše rozhodnutie.
+
 Opravu typu "zapísal som to do skillu" neschváli.
 
 ### Ako to postaviť
@@ -521,9 +540,18 @@ Opravu typu "zapísal som to do skillu" neschváli.
    súboru riadiaceho správanie a že kontrola musí na chybe zlyhať.
 2. Do persony daj sekciu "Vlastná chyba", ktorá na globálne pravidlo odkazuje a nesie krátke riadky incidentov.
 3. Napíš `bin/chyba.sh` s voľbami `--trieda`, `--subor`, `--popis`, `--pravda`, `--kontrola`. Register je súbor s
-   tabulátormi mimo repa, napríklad `~/.local/state/<názov>/chyby.tsv`.
-4. Napíš skill `chyba`, ktorý hovorí, kedy skript spustiť a v akom poradí.
-5. Napíš hook Stop, ktorý zastaví odpoveď uznávajúcu chybu bez commitu a bez skriptu.
+   tabulátormi mimo repa, napríklad `~/.local/state/<názov>/chyby.tsv`. Skript zistí commit príkazom
+   `git log -1 --format=%h -- <súbor>` a odmietne súbor, ktorý má neuložené zmeny (`git status --porcelain -- <súbor>`
+   nie je prázdny).
+4. Napíš skill `chyba`, ktorý hovorí, kedy skript spustiť a v akom poradí. Skill je súbor `SKILL.md` s popisom, podľa
+   ktorého ho agent vyberie.
+5. Napíš hook Stop, ktorý zastaví odpoveď uznávajúcu chybu bez commitu a bez skriptu. Hook robí toto.
+   1. Z JSON-u na vstupe vezme `transcript_path` a `stop_hook_active`. Ak je `stop_hook_active` pravda, skončí
+      bez výstupu.
+   2. Prečíta prepis (jeden JSON na riadok) a nájde poslednú správu operátora, teda záznam `user`, ktorý nesie text.
+   3. Zo záznamov `assistant` po nej zozbiera texty odpovede a príkazy nástroja Bash.
+   4. Ak text obsahuje frázu z regulárneho výrazu uznania a medzi príkazmi nie je `chyba.sh`, vypíše
+      `{"decision":"block","reason":"<dôvod> Správny postup: <krok>"}`.
 6. Napíš test hooku s prepisom konverzácie z reálnej chyby. Test musí zlyhať, keď hook vypneš.
 7. Úlohu na kontrolu pri druhom výskyte zadaj agentovi, ktorý spravuje pravidlá (kapitola 7).
 
@@ -535,12 +563,22 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
   --kontrola "hook odmietne odpoveď bez dôkazu"
 ```
 
+### Čo od runtime vyžaduje
+
+- Hook, ktorý beží pred koncom odpovede a môže odpoveď zastaviť s dôvodom, ktorý agent dostane späť.
+- Prístup hooku k prepisu relácie, aby videl text odpovede a príkazy ťahu. U Claude Code je to cesta v poli
+  `transcript_path`.
+- Príznak, že hook už raz zastavil (`stop_hook_active`), aby sa slučka neopakovala donekonečna.
+- Pri automatickom založení úlohy na kontrolu správca úloh s príkazovým riadkom (kapitola 7). Bez neho skript úlohu
+  nezaloží a povie to.
+
 ### Náš príklad
 
 Pravidlá chýb sú v `global/CLAUDE.md`, §4, prijatá námietka v §1. Skript je `bin/chyba.sh`, skill
 `skills/chyba/SKILL.md`, hook `hooks/objection_fix.mjs`, testy `lib/chyba.test.mjs` a `hooks/objection_fix.test.mjs`.
-Rozhodnutie o slučke je `rozhodnutia/D0142.md`, súkromný záznam, ktorý v repe nie je (obsah je v tabuľke "Čo v repe nie je" v `README.md`). Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie
-agentov". Sekciu "Vlastná chyba" ukazuje `PERSONA.md` v repe správcu agentov.
+Rozhodnutie o slučke je `rozhodnutia/D0142.md`, súkromný záznam, ktorý v repe nie je (obsah je v tabuľke "Čo v repe
+nie je" v `README.md`). Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie agentov". Sekciu
+"Vlastná chyba" ukazuje `PERSONA.md` v repe správcu agentov.
 
 ## 6. Hooky ako vymáhanie
 
