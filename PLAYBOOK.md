@@ -20,7 +20,7 @@ verziu prečítaš. Kapitola 12 je poradie práce na prvý týždeň.
 
 Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
 žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
-prevádzky (jeho nasadenie na server je naša vec, nie súčasť návodu). Mapu repa nesie `README.md`, prečítaj ju prvú.
+prevádzky (jeho nasadenie na server je naša vec, nie súčasť návodu). Mapu repa nesie `README.md`, prečítaj ju prvú. Súbory, ktoré text spomína a v repe nie sú, opisuje jej tabuľka "Čo v repe nie je".
 Neskopíruj naše pravidlá ako text, sú odpoveďou na naše chyby a tvoje budú iné. Skopíruj mechanizmy, teda spôsob, ako sa pravidlo zapíše,
 načíta, skontroluje a opraví.
 
@@ -34,6 +34,17 @@ načíta, skontroluje a opraví.
 | správca servera | agent s rootom, robí len prácu, ktorá root alebo citlivý úkon potrebuje |
 | správca úloh | nástroj s úlohami, stavmi a komentármi, u nás Tasker |
 | persona, rola | súbor `PERSONA.md` v repe agenta a mandát opísaný v `roles/<slug>.md`, nezávislý od mena agenta |
+
+### Predpoklady
+
+Skripty v repe sú bash a Node.js 22 alebo novší. Verziu vyžaduje príkaz testov, `node --test` s vzormi súborov, a skripty
+používajú len moduly `node:`, nič sa neinštaluje.
+Hooky sú hooky Claude Code (SessionStart, UserPromptSubmit, PreToolUse, Stop). Fungujú, len keď ich zapojíš do nastavenia
+Claude Code, repo to za teba nerobí.
+Cesty `/opt/agent-rules` a `~/Work/agent-rules` sú naše nasadenia klonu pravidiel. Nahraď ich svojimi.
+Windows sme neoverili. Skripty pobežia len cez WSL alebo Git Bash, bez bashu a Node nepobežia vôbec.
+Mechanizmy v texte stoja aj bez našich skriptov. Podľa časti "Ako to postaviť" v každej kapitole si ich napíšeš vo
+svojom jazyku a svojom nástroji.
 
 ## 1. Agent je persona a pamäť v gite, nie relácia
 
@@ -149,7 +160,7 @@ Tabuľka vrstiev je v `README.md`. Index rolí je `roles/ROLES.md`, pravidlá ro
 `roles/spravca-agentov.md`, `roles/pracovny-agent.md` a `roles/dizajner.md`. Hooky sú `hooks/identity.mjs`,
 `hooks/rules_delta.mjs` a `hooks/own_rule_scope.mjs`. Nasadenie robí `env/server/install.sh`, duplikáty hľadá
 `lib/rule_dupes.mjs`, strop slov drží `lib/global_word_cap.txt`. Pravidlo "pokyn v rozpore s pravidlom" je záznam
-`rozhodnutia/D0144.md`.
+`rozhodnutia/D0144.md`. Tieto štyri súbory v repe nie sú, sú viazané na náš runtime alebo súkromné. Čo robia, je v tabuľke "Čo v repe nie je" v `README.md`.
 
 ## 3. Operátor a zástupca
 
@@ -299,7 +310,7 @@ Schéma je v `rozhodnutia/README.md`, značky v `rozhodnutia/ROZSAHY.md`. Ukáž
 `rozhodnutia/D0142.md` a `rozhodnutia/D0144.md`, ktorý nahrádza `rozhodnutia/D0010.md`. Zápis robí `bin/rozhodni.sh`,
 logiku a kontrolu `lib/rozhodnutia.mjs` s testom `lib/rozhodnutia.test.mjs`. Zrušené tvrdenia číta `lib/doc_paths.mjs`
 zo súboru `lib/retired_claims.txt`, pamäť kontroluje `lib/memory_claims.mjs`. Hooky sú `hooks/rozhodnutia_guard.mjs` a
-`hooks/rozhodnutia_context.mjs`.
+`hooks/rozhodnutia_context.mjs`. Záznamy D0010, D0141, D0142 a D0144, skripty `lib/doc_paths.mjs` a `lib/memory_claims.mjs`, zoznam `lib/retired_claims.txt` a oba hooky `rozhodnutia_*` v repe nie sú. Záznamy sú súkromné, ostatné sú viazané na naše úlohy a pamäť. Čo robia, je v tabuľke "Čo v repe nie je" v `README.md`.
 
 ## 5. Slučka chyby
 
@@ -373,7 +384,7 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
 
 Pravidlá chýb sú v `global/CLAUDE.md`, §4, prijatá námietka v §1. Skript je `bin/chyba.sh`, skill
 `skills/chyba/SKILL.md`, hook `hooks/objection_fix.mjs`, testy `lib/chyba.test.mjs` a `hooks/objection_fix.test.mjs`.
-Rozhodnutie o slučke je `rozhodnutia/D0142.md`. Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie
+Rozhodnutie o slučke je `rozhodnutia/D0142.md`, súkromný záznam, ktorý v repe nie je (obsah je v tabuľke "Čo v repe nie je" v `README.md`). Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie
 agentov". Sekciu "Vlastná chyba" ukazuje `PERSONA.md` v repe správcu agentov.
 
 ## 6. Hooky ako vymáhanie
@@ -445,7 +456,7 @@ Zapojenie:
 
 Hooky sú v `hooks/*.mjs` a ich testy v `hooks/*.test.mjs`. Helper zamietnutia je `lib/deny.mjs` (pre git hooky
 `lib/deny.sh`), strážca `lib/deny_check.mjs`, rozhodnutie `rozhodnutia/D0141.md`. Zapojenie robí funkcia `settings` v
-`env/server/install.sh`. Hlavičkové komentáre `hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`,
+`env/server/install.sh`, ktoré v repe nie sú (v tabuľke "Čo v repe nie je" v `README.md`). Hlavičkové komentáre `hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`,
 `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs` opisujú, čo hook vymáha a čo ho vyvolalo.
 
 ## 7. Práca je úloha v správcovi úloh
@@ -524,9 +535,10 @@ správcu úloh pod rootom a pošle agenta k obalu `bin/tk`. Číslo úlohy v tex
 
 Pravidlá sú v `env/server/CLAUDE.md`, časti "Správca úloh" a "Postup úlohy". Plán schvaľuje zástupca podľa
 `roles/zastupca-operatora.md`. Tok práce a 30 minút pre blokér sú v `roles/spravca-agentov.md`, časť "Čo spravuje a
-tok práce". Hooky sú `hooks/todo_after_comment.mjs`, `hooks/tasker_work.mjs` a `hooks/tasker_root.mjs`. Obal je
-`bin/tk`. Úlohu pre agenta webu zakladá `bin/uloha-webu.sh` spolu s úlohou posudku dizajnéra a hook `hooks/web_review.mjs`
-zamietne všetko ostatné. Samotný správca úloh v tomto repe nie je, je to samostatný nástroj.
+tok práce". Hooky sú `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`. Obal je `bin/tk`. Hook `hooks/tasker_root.mjs`, skript
+`bin/uloha-webu.sh` (založí úlohu pre agenta webu spolu s úlohou posudku dizajnéra) a hook `hooks/web_review.mjs` (zamietne
+všetko ostatné) sú viazané na náš správca úloh a v repe nie sú, opisuje ich tabuľka "Čo v repe nie je" v `README.md`. Samotný správca úloh v tomto repe nie je, je to
+samostatný nástroj.
 
 ## 8. Správy medzi agentmi
 
@@ -599,10 +611,10 @@ Hotovo, keď `curl -sI https://test.example/` vráti 200.
 
 ### Náš príklad
 
-Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript správ je `bin/ask_agent.sh` s testom
-`hooks/ask_agent.test.mjs`. Budič, skript odpovede a trasy odpovedí sú mimo tohto repa, v repe správcu agentov v
+Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript správ `bin/ask_agent.sh` s testom
+`hooks/ask_agent.test.mjs` v repe nie je, je viazaný na naše schránky. Budič, skript odpovede a trasy odpovedí sú mimo tohto repa, v repe správcu agentov v
 adresári `runtime/` (súbory `driver.mjs`, `reply.sh`, `route.mjs`, `morning.mjs` a `README.md`, časť "Budenie"). Hook
-proti čakaniu je `hooks/no_model_wait.mjs`. Pravidlá pre správy agentom sú v `global/CLAUDE.md`, §2.
+proti čakaniu `hooks/no_model_wait.mjs` v repe nie je (v tabuľke "Čo v repe nie je" v `README.md`). Pravidlá pre správy agentom sú v `global/CLAUDE.md`, §2.
 
 ## 9. Delegovanie
 
@@ -649,8 +661,8 @@ sub-agentovi agent pozrie posledné záznamy práce na úlohe, aby ju nerobili d
 
 Pravidlo modelov a odovzdania práce je v `global/CLAUDE.md`, §6. Delegovanie je v `roles/spravca-agentov.md`, časť
 "Delegovanie", pokyny agentom v časti "Pokyny agentom a oprava". Hook `hooks/tasker_work.mjs` s testom
-`hooks/tasker_work.test.mjs` ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`,
-napríklad `skills/projekt-novy`.
+`hooks/tasker_work.test.mjs` ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`. Náš `skills/projekt-novy`
+(založenie projektu webu) v repe nie je, je viazaný na naše účty a domény.
 
 ## 10. Písanie
 
@@ -698,10 +710,10 @@ overenie odkladá na nasadenie.
 
 ### Náš príklad
 
-Skill je `skills/unslop/SKILL.md`, jadro je jeho sekcia "Jadro". Vkladá ho `hooks/unslop.mjs`, strop odpovede drží
+Skill je `skills/unslop/SKILL.md`, jadro je jeho sekcia "Jadro". Do kontextu ho vkladá `hooks/unslop.mjs`, ktorý v repe nie je, píšeš si ho sám. Strop odpovede drží
 `hooks/reply_guard.mjs` s testom `hooks/reply_guard.test.mjs`. Pravidlá sú v `global/CLAUDE.md`, §2 a §5. Pravidlo
 súborov pre operátora je v `env/server/CLAUDE.md`, časť "Schránky a budič". Schválené vzory opakovanej práce sú v
-`artifacts/` a ich používanie opisuje `skills/artefakty/SKILL.md`.
+`artifacts/` a ich používanie opisuje `skills/artefakty/SKILL.md`. Ani jedno v repe nie je, sú to naše pracovné výstupy.
 
 ## 11. Čistý kontext a kontinuita
 
@@ -721,7 +733,7 @@ pamäte, commitne sa a pushne. Zakázaná veta je "prinesiem to v ďalšej relá
 
 1. Agent zapíše stav do pamäte a úlohy.
 2. Commitne a pushne.
-3. Ukončí odpoveď posledným riadkom z `bin/kontext.sh spanok --stav "<súhrn>"`.
+3. Ukončí odpoveď riadkom, ktorý budič pozná. U nás ho vypíše `bin/kontext.sh spanok --stav "<súhrn>"`.
 4. Budič pošle do toho istého vlákna príkaz `/clear` a model sa nevolá.
 
 Voľba `pokracuj --dalej "<ďalší krok>"` sa použije len vtedy, keď ďalší krok nečaká na nikoho. Budič po čistení pošle
@@ -753,7 +765,9 @@ commit a push idú hneď. Čakanie na vonkajší stav robí skript, ktorý agent
 ### Náš príklad
 
 Pravidlá čistého kontextu sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript je `bin/kontext.sh`, jeho
-logika `lib/kontext.mjs`. Hooky sú `hooks/context_warning.mjs` a `hooks/clear_bridge.mjs` s testami. Pravidlo
+logika `lib/kontext.mjs`. Hooky sú `hooks/context_warning.mjs` a `hooks/clear_bridge.mjs`. Súbory `bin/kontext.sh`, `lib/kontext.mjs`,
+`hooks/clear_bridge.mjs` a budič sú viazané na náš runtime a v tomto repe nie sú. Rovnako `hooks/context_warning.mjs`, ktorý volá
+`bin/kontext.sh`. Čo každý robí, je v tabuľke "Čo v repe nie je" v `README.md`. Pravidlo
 nedokončenej práce je v `global/CLAUDE.md`, §6. Časti "Kontinuita" a "Súbežnosť" ukazuje `PERSONA.md` v repe správcu
 agentov. Dozor nad vláknami a budič čistého kontextu sú v jeho adresári `runtime/`.
 

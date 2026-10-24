@@ -1,8 +1,9 @@
 #!/bin/bash
-# Pred pushom prejde súbory repa a meno autora a správy commitov, ktoré
-# idú von (lib/public_check.mjs). Zapnutie: git config core.hooksPath .githooks
+# Pred pushom prejde súbory repa (lib/public_check.mjs), odkazy na cesty (lib/path_check.mjs)
+# a meno autora a správy commitov, ktoré idú von. Zapnutie: git config core.hooksPath .githooks
 cd "$(git rev-parse --show-toplevel)" || exit 1
 node lib/public_check.mjs || exit 1
+node lib/path_check.mjs || exit 1
 zero=0000000000000000000000000000000000000000
 while read -r _ local_sha _ remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
