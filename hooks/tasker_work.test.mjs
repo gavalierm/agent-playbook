@@ -1,0 +1,277 @@
+// tasker_work.mjs: ohlásenie práce pri "úloha N", ticho bez čísla, stop po
+// poslednom sub-agentovi, nie po prvom z dvoch. Falošný príkaz zapisuje
+// argumenty, HOME je v mkdtemp, živý Tasker sa nedotkne.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { taskNumber, taskNumbers } from "./tasker_work.mjs";
+
+const HOOK = join(dirname(fileURLToPath(import.meta.url)), "tasker_work.mjs");
+
+function sandbox() {
+  const dir = mkdtempSync(join(tmpdir(), "tasker_work-"));
+  const log = join(dir, "calls.log");
+  const fake = join(dir, "fake-tasker.sh");
+  writeFileSync(fake, `#!/bin/sh\necho "$TASKER_USER $*" >> "${log}"\n[ "$1 $2" = "task show" ] && echo "{\\"status\\":\\"$FAKE_STATUS\\",\\"assignee\\":\\"spravca-agentov\\"}"\nexit 0\n`);
+  chmodSync(fake, 0o755);
+  const env = { PATH: process.env.PATH, HOME: dir, XDG_CACHE_HOME: join(dir, "cache"), AGENT_NAME: "spravca-agentov", TASKER_WORK_CMD: fake };
+  const calls = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter((l) => l && !l.includes(" task show ")) : []);
+  return { dir, env, calls };
+}
+
+function run(sb, input, envOver = {}) {
+  const r = spawnSync("node", [HOOK], { input: JSON.stringify(input), env: { ...sb.env, ...envOver }, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, "");
+  return r;
+}
+
+const pre = (prompt, id, extra = {}) => ({
+  hook_event_name: "PreToolUse", tool_name: "Agent", session_id: "S1", tool_use_id: id,
+  tool_input: { description: "x", prompt, run_in_background: true }, ...extra,
+});
+
+// Sub-agent: záznam ako v Claude Code 2.1.309 (jsonl + meta.json vedľa).
+function subagent(sb, id, toolUseId, prompt) {
+  const t = join(sb.dir, "sub");
+  mkdirSync(t, { recursive: true });
+  const path = join(t, `agent-${id}.jsonl`);
+  writeFileSync(path, JSON.stringify({ type: "user", message: { role: "user", content: prompt } }) + "\n{}\n");
+  writeFileSync(join(t, `agent-${id}.meta.json`), JSON.stringify({ toolUseId, description: "x" }));
+  return { hook_event_name: "SubagentStop", session_id: "S1", agent_id: id, agent_transcript_path: path };
+}
+
+test("taskNumber: tvary zápisu a prvé číslo", () => {
+  assert.equal(taskNumber("pracuj na úloha 414"), 414);
+  assert.equal(taskNumber("Úloha 7 v Taskeri"), 7);
+  assert.equal(taskNumber("k úlohy 12"), 12);
+  assert.equal(taskNumber("v úlohe 99"), 99);
+  assert.equal(taskNumber("https://x.ts.net:8801/tasks/380 hotovo"), 380);
+  assert.equal(taskNumber("oprava #55"), 55);
+  assert.equal(taskNumber("úloha 8 a úloha 9"), 8);
+  assert.equal(taskNumber("bez čísla, rok 2026, port 8801"), null);
+  assert.equal(taskNumber("&#39; a color #fff"), null);
+  assert.equal(taskNumber(""), null);
+});
+
+test("PreToolUse: úloha 414 ohlási prácu s vláknom a menom agenta", () => {
+  const sb = sandbox();
+  run(sb, pre("Pracuj na úloha 414, časť 2", "tu1"));
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 414 --thread S1"]);
+});
+
+test("PreToolUse: starý názov Task, číslo z popisu", () => {
+  const sb = sandbox();
+  run(sb, { ...pre("bez čísla", "tu1"), tool_name: "Task", tool_input: { description: "Úloha 5 oprava", prompt: "bez čísla" } });
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 5 --thread S1"]);
+});
+
+test("bez čísla úlohy žiadne volanie, ani iný nástroj", () => {
+  const sb = sandbox();
+  run(sb, pre("urob niečo", "tu1"));
+  run(sb, { ...pre("úloha 414", "tu2"), tool_name: "Bash" });
+  assert.deepEqual(sb.calls(), []);
+});
+
+test("bez mena agenta hook nerobí nič, meno z PERSONA.md cwd", () => {
+  const sb = sandbox();
+  const env = { AGENT_NAME: "" };
+  const proj = join(sb.dir, "proj");
+  mkdirSync(proj);
+  run(sb, pre("úloha 414", "tu1", { cwd: proj }), env);
+  assert.deepEqual(sb.calls(), []);
+  writeFileSync(join(proj, "PERSONA.md"), "# spravca-servera\n\nRole: x\n");
+  run(sb, pre("úloha 414", "tu2", { cwd: proj }), env);
+  assert.deepEqual(sb.calls(), ["spravca-servera work 414 --thread S1"]);
+});
+
+test("taskNumbers: výčet a viac výskytov, bez opakovania", () => {
+  assert.deepEqual(taskNumbers("úloha 485 a 486"), [485, 486]);
+  assert.deepEqual(taskNumbers("úlohy 485, 486 a 487"), [485, 486, 487]);
+  assert.deepEqual(taskNumbers("úloha 485 aj #486"), [485, 486]);
+  assert.deepEqual(taskNumbers("úloha 8 a potom úloha 9, znova úloha 8 a /tasks/10"), [8, 9, 10]);
+  assert.deepEqual(taskNumbers("úloha 7 a 2026 krokov"), [7, 2026]);
+  assert.deepEqual(taskNumbers("bez čísla, rok 2026"), []);
+});
+
+test("viac rôznych čísel: ohlási každé, replay zadania \"úloha 485 a 486\" (úloha 492)", () => {
+  const sb = sandbox();
+  run(sb, pre("úloha 20 a potom úloha 21", "tu1"));
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 20 --thread S1", "spravca-agentov work 21 --thread S1"]);
+  const sb2 = sandbox();
+  run(sb2, pre("Oprav toto, úloha 485 a 486.", "tu2"));
+  assert.deepEqual(sb2.calls(), ["spravca-agentov work 485 --thread S1", "spravca-agentov work 486 --thread S1"]);
+  run(sb2, subagent(sb2, "a1", "tu2", "Oprav toto, úloha 485 a 486."));
+  assert.deepEqual(sb2.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 485 --stop", "spravca-agentov work 486 --stop"]);
+});
+
+test("stop: číslo, ktoré drží iný sub-agent, sa neukončí", () => {
+  const sb = sandbox();
+  run(sb, pre("úloha 485 a 486", "tuA"));
+  run(sb, pre("úloha 486", "tuB"));
+  run(sb, subagent(sb, "a1", "tuA", "úloha 485 a 486"));
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 485 --stop"]);
+  run(sb, subagent(sb, "b1", "tuB", "úloha 486"));
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 485 --stop", "spravca-agentov work 486 --stop"]);
+});
+
+test("stop po poslednom sub-agentovi, nie po prvom z dvoch", () => {
+  const sb = sandbox();
+  run(sb, pre("úloha 414 A", "tuA"));
+  run(sb, pre("úloha 414 B", "tuB"));
+  run(sb, subagent(sb, "a1", "tuA", "úloha 414 A"));
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), []);
+  run(sb, subagent(sb, "b1", "tuB", "úloha 414 B"));
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 414 --stop"]);
+});
+
+test("stop jediného sub-agenta, iná úloha nedrží prácu", () => {
+  const sb = sandbox();
+  run(sb, pre("úloha 414", "tuA"));
+  run(sb, pre("úloha 415", "tuB"));
+  run(sb, subagent(sb, "a1", "tuA", "úloha 414"));
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 414 --stop"]);
+});
+
+test("stop bez meta.json: číslo z prvej správy záznamu", () => {
+  const sb = sandbox();
+  run(sb, pre("úloha 414", "tuA"));
+  const ev = subagent(sb, "a1", "iné", "úloha 414");
+  run(sb, ev);
+  assert.deepEqual(sb.calls().filter((c) => c.includes("--stop")), ["spravca-agentov work 414 --stop"]);
+});
+
+test("stop sub-agenta bez ohlásenej práce nevolá nič, aj bez záznamu relácie", () => {
+  const sb = sandbox();
+  run(sb, subagent(sb, "a1", "tuX", "bez čísla"));
+  run(sb, subagent(sb, "a2", "tuY", "úloha 414"));
+  assert.deepEqual(sb.calls(), []);
+});
+
+test("bez príkazu a runuser (Mac): ticho, kód 0", () => {
+  const sb = sandbox();
+  const env = { TASKER_WORK_CMD: "", PATH: "/nonexistent" };
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(pre("úloha 414", "tu1")), env: { ...sb.env, ...env }, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout + r.stderr, "");
+  const ev = subagent(sb, "a1", "tu1", "úloha 414");
+  const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(ev), env: { ...sb.env, ...env }, encoding: "utf8" });
+  assert.equal(r2.status, 0);
+  assert.equal(r2.stdout + r2.stderr, "");
+  assert.deepEqual(sb.calls(), []);
+});
+
+test("obal tk: príkaz pod tasker s TASKER_HOME a TASKER_USER (falošný runuser, TK_HOME mimo živej DB)", () => {
+  const sb = sandbox();
+  const bin = join(sb.dir, "bin");
+  mkdirSync(bin);
+  const log = join(sb.dir, "runuser.log");
+  writeFileSync(join(bin, "runuser"), `#!/bin/sh\necho "$@" >> "${log}"\n`);
+  chmodSync(join(bin, "runuser"), 0o755);
+  run(sb, pre("úloha 414", "tu1"), { TASKER_WORK_CMD: "", TK_HOME: "/nonexistent/tk-home", PATH: `${bin}:${process.env.PATH}` });
+  assert.equal(readFileSync(log, "utf8").trim(), "-u tasker -- env TASKER_HOME=/nonexistent/tk-home TASKER_USER=spravca-agentov tasker work 414 --thread S1");
+});
+
+test("nesprávny vstup: ticho, kód 0", () => {
+  const sb = sandbox();
+  const r = spawnSync("node", [HOOK], { input: "nie json", env: sb.env, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, "");
+});
+
+const prompt = (text, extra = {}) => ({ hook_event_name: "UserPromptSubmit", session_id: "S2", prompt: text, ...extra });
+const bash = (extra = {}) => ({ hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "S2", tool_input: { command: "ls" }, ...extra });
+
+test("výzva s číslom a prvý Bash: práve jedno work, druhý Bash nič", () => {
+  const sb = sandbox();
+  run(sb, prompt("Úloha 466 sa týka budenia"));
+  assert.deepEqual(sb.calls(), []);
+  run(sb, bash());
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 466 --thread S2"]);
+  run(sb, bash());
+  run(sb, { ...bash(), tool_name: "Edit" });
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 466 --thread S2"]);
+});
+
+test("výzva bez čísla nič, ani nástroj; nová výzva bez čísla číslo nemení", () => {
+  const sb = sandbox();
+  run(sb, prompt("urob niečo"));
+  run(sb, bash());
+  assert.deepEqual(sb.calls(), []);
+  run(sb, prompt("Úloha 466"));
+  run(sb, prompt("a ešte toto"));
+  run(sb, bash());
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 466 --thread S2"]);
+});
+
+test("ohlásenie staršie ako 60 minút sa zopakuje", () => {
+  const sb = sandbox();
+  run(sb, prompt("Úloha 466"));
+  run(sb, bash());
+  const f = join(sb.dir, "cache", "agent-rules", "tasker_work_current", "S2");
+  writeFileSync(f, JSON.stringify({ n: 466, reportedAt: Date.now() - 61 * 60_000 }));
+  run(sb, bash());
+  assert.equal(sb.calls().length, 2);
+});
+
+test("needs_human s riešiteľom agentom: najprv komentár, potom work", () => {
+  const sb = sandbox();
+  run(sb, prompt("Úloha 466"));
+  run(sb, bash(), { FAKE_STATUS: "needs_human" });
+  const c = sb.calls();
+  assert.equal(c.length, 2);
+  assert.match(c[0], /^spravca-agentov comment 466 --body /);
+  assert.equal(c[1], "spravca-agentov work 466 --thread S2");
+});
+
+const inboxMsg = (text) => `<schranka od="tasker" id="x1" odpoveď="nečakám">\nTasker: ${text}\n</schranka>`;
+
+test("správa schránky s číslom a needs_human: ani komentár, ani work (chyba 24. 10. 2026, úloha 482)", () => {
+  const sb = sandbox();
+  run(sb, prompt(inboxMsg("úloha #482 pre teba, čaká na operátora")));
+  run(sb, bash(), { FAKE_STATUS: "needs_human" });
+  run(sb, bash(), { FAKE_STATUS: "needs_human" });
+  assert.deepEqual(sb.calls(), []);
+});
+
+test("správa schránky: úloha todo sa prevezme príkazom start, potom work", () => {
+  const sb = sandbox();
+  run(sb, prompt(inboxMsg("úloha #482 pre teba")));
+  run(sb, bash(), { FAKE_STATUS: "todo" });
+  assert.deepEqual(sb.calls(), ["spravca-agentov start 482", "spravca-agentov work 482 --thread S2"]);
+});
+
+test("úloha v inom stave než todo sa neprevezme, work ako doteraz", () => {
+  const sb = sandbox();
+  run(sb, prompt(inboxMsg("úloha #482 pre teba")));
+  run(sb, bash(), { FAKE_STATUS: "waiting" });
+  assert.deepEqual(sb.calls(), ["spravca-agentov work 482 --thread S2"]);
+});
+
+test("po správe schránky odpoveď operátora (s číslom aj bez) úlohu z needs_human vráti", () => {
+  for (const reply of ["Úloha 482: schvaľujem", "schvaľujem"]) {
+    const sb = sandbox();
+    run(sb, prompt(inboxMsg("úloha #482 pre teba")));
+    run(sb, prompt(reply));
+    run(sb, bash(), { FAKE_STATUS: "needs_human" });
+    const c = sb.calls();
+    assert.equal(c.length, 2, reply);
+    assert.match(c[0], /^spravca-agentov comment 482 --body /);
+    assert.equal(c[1], "spravca-agentov work 482 --thread S2");
+  }
+});
+
+test("Mac bez tk: výzva aj nástroj ticho, kód 0", () => {
+  const sb = sandbox();
+  const env = { TASKER_WORK_CMD: "", PATH: "/nonexistent" };
+  for (const ev of [prompt("Úloha 466"), bash()]) {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(ev), env: { ...sb.env, ...env }, encoding: "utf8" });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout + r.stderr, "");
+  }
+  assert.deepEqual(sb.calls(), []);
+});
