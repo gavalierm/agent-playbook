@@ -609,3 +609,246 @@ The mistake rules are in `global/CLAUDE.md`, §4, the accepted objection in §1.
 (its content is in the table "What is not in the repo" in `README.md`). The improvement procedure is in
 `roles/spravca-agentov.md`, part "Improving agents" ("Zlepšovanie agentov"). The section "Own mistake" is shown by
 `PERSONA.md` in the agent manager's repo.
+
+## 6. Hooks as enforcement
+
+### Problem
+
+A rule written in a sentence is followed by the model most of the time, not always. The longer the context, the greater the
+chance it forgets. The operator cannot read every reply. What a machine can check should be checked by a machine.
+
+A rejection without an explanation is another problem. The model guesses afterwards, and every attempt costs a call with the
+whole context.
+
+### When you need it
+
+You need it for a rule that the agent broke at least twice, and for a step whose consequence cannot be undone (a write into
+the register outside the script, a dangerous git command, a reply with a link that does not work). Do not write a hook for a
+rule the agent follows. Every hook adds code that must be maintained, and it slows a turn slightly.
+
+You do not need it at the start. Begin with a rule in a sentence, and when the agent breaks it, write a hook for that one
+mistake.
+
+### Mechanism
+
+A hook is a script that the runtime runs on an event. It gets JSON on standard input (for example `session_id`, `cwd`,
+`transcript_path`, `tool_input`) and returns the result through output or an exit code. In Claude Code this holds.
+
+- Code 0 says the hook ran. The output of SessionStart and UserPromptSubmit is added to the agent's context.
+- Code 2 blocks the step, and the agent gets the text from standard error.
+- Any other code is a hook error. The step continues and the agent does not know about the error.
+- The hook can print JSON instead. Rejecting a tool (PreToolUse) is
+  `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}`.
+  Stopping a reply (Stop) is `{"decision":"block","reason":"..."}`.
+
+The events we use:
+
+| event | when it runs | what it enforces for us |
+|---|---|---|
+| SessionStart | start, resume, `/clear`, compaction | `unslop.mjs` inserts the core of the writing rules, `identity.mjs` announces the identity and inserts the roles, `clear_bridge.mjs` performs the session start after `/clear`, `rozhodnutia_context.mjs` inserts changes of decisions |
+| UserPromptSubmit | on every prompt | `context_warning.mjs` warns about the context limit, `rules_delta.mjs` inserts a change of rules, `tasker_work.mjs` announces work on a task |
+| PreToolUse | before a tool is used | `no_model_wait.mjs` rejects a wait in the foreground, `foreign_git.mjs` and `git_pull.mjs` dangerous git, `tasker_root.mjs` a direct task manager command under root, `web_review.mjs` a web task without a review, `rozhodnutia_guard.mjs` a write of a decision outside the script, `own_rule_scope.mjs` a rule at the wrong level |
+| SubagentStop | end of a sub-agent | `tasker_work.mjs` ends the work record |
+| Stop | before the end of a reply | `reply_guard.mjs` the cap and links in the reply, `todo_after_comment.mjs` a task after a comment, `objection_fix.mjs` an acknowledged mistake without a fix |
+
+Every rejection carries a correct procedure. The principle rests on one helper module through which all hooks reject. The
+module prints the reason and the line "Correct procedure: <step>" (our files use "Správny postup:"), and it refuses an empty
+procedure and vague sentences like "try differently". So the agent does not have to guess and saves a call that would cost
+the whole context. A guard runs in the repo check and fails on a hook that rejects with raw JSON, with code 2 or with `echo`
+to standard error without a procedure. The rule in the instructions that the hook guards then needs only a short sentence
+with the name of the hook.
+
+Three principles for your own hook.
+
+- A Stop hook is silent on the second stop in a row (`stop_hook_active`), otherwise it loops.
+- A hook that only announces never blocks a tool, and on error it stays silent with code 0.
+- A hook that keeps state in a file stores it per session, so sessions do not affect each other.
+
+Every hook has a test next to it. The mistake because of which the hook arose is in the test as a replay, meaning the input
+that caused the mistake, run again. A test never touches a live database or service. Hooks that read the state of the task
+manager read the database read-only.
+
+The wiring is in `settings.json`, either in the environment settings or in `.claude/settings.json` of the agent's repo. The
+installer first removes the hook groups from our path and then adds the current ones, so it can be run repeatedly and an old
+clone does not stay wired.
+
+### How to build it
+
+1. Write a helper module for rejection with three functions. The first rejects a tool (PreToolUse), the second stops a reply
+   (Stop) and the third rejects with code 2. All take a reason and a procedure and refuse an empty procedure.
+2. Write a check that fails on a hook with a raw rejection. It is enough to scan the hook files and find
+   `permissionDecision` or `process.exit(2)` outside the helper module.
+3. Start with one Stop hook that guards one thing that already went wrong for you.
+4. For every new hook write a test with a replay of the mistake and add it to the repo check.
+5. Wire the hook in `settings.json` with a repeatable script.
+
+The smallest hook that rejects a wait in the foreground:
+
+```
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+
+let input = {};
+try { input = JSON.parse(readFileSync(0, "utf8")); } catch { process.exit(0); }
+const cmd = input.tool_input?.command ?? "";
+const m = cmd.match(/\bsleep\s+(\d+)/);
+if (m && Number(m[1]) > 10) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason:
+        "A wait in the foreground keeps the turn open and you pay for it.\nCorrect procedure: end the reply and handle the result in the next turn.",
+    },
+  }));
+}
+```
+
+Wiring:
+
+```
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node <rules clone>/hooks/reply_guard.mjs" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash",
+        "hooks": [ { "type": "command", "command": "node <rules clone>/hooks/no_model_wait.mjs" } ] }
+    ]
+  }
+}
+```
+
+### What it requires from the runtime
+
+- Hooks on the events from the table, which get JSON on input and can add text to the context, reject a tool or stop a
+  reply. Claude Code does this and describes the formats in the hook documentation.
+- Wiring in a settings file that the runtime reads at start. In Claude Code a change of settings takes effect in a new
+  session, not always in a running one.
+- Node.js or another interpreter in which you write the hook. A hook can also be a shell script, if it reads the input with
+  a JSON tool.
+
+### Our example
+
+The hooks are in `hooks/*.mjs` and their tests in `hooks/*.test.mjs`. The rejection helper is `lib/deny.mjs` (for git hooks
+`lib/deny.sh`), the guard is `lib/deny_check.mjs`, the decision is `rozhodnutia/D0141.md`. The wiring is done by the function
+`settings` in `env/server/install.sh`, which are not in the repo (see the table "What is not in the repo" in `README.md`).
+The header comments of `hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`, `hooks/todo_after_comment.mjs` and
+`hooks/tasker_work.mjs` describe what the hook enforces and what triggered it.
+
+## 7. Work is a task in a task manager
+
+### Problem
+
+Work assigned in a conversation has no reason, no done condition and no state. Nobody knows whether it stands, waits or is
+done. An open task that nobody works on gets lost. A question to a human in a conversation gets lost too, because it does not
+show up where the human looks for it.
+
+### When you need it
+
+You need it when an agent does several things at once, when work takes longer than one session, or when several agents work
+on it. You also need it when the operator asks "what is stuck and why".
+
+You do not need it with one agent and one task that one session finishes. A conversation is enough then. A task file in the
+project repo is also enough at the start (part "How to build it"). Add the hooks from the end of the chapter only when you
+have a tool that a machine can read.
+
+### Mechanism
+
+Regular work for an agent is a task in a task manager (in our case Tasker). The task manager is a tool with a database of
+tasks, a command line and a web. Every task has a project, a reason, a done condition and an assignee. The assignee is the
+agent or human who does it. The done condition is a note by which you can decide whether the task is done, best a command and
+its expected output. A task without a project is rejected. A task without an assignee wakes nobody when its blockers finish,
+so a task the agent does itself or through a sub-agent is created with an assignee.
+
+The states that the rules and hooks use:
+
+| state | meaning |
+|---|---|
+| `todo` | waits to be taken |
+| `in_progress` | somebody works on it |
+| `needs_human` | the agent asks a human or waits for approval |
+| `blocked` | stands on another task |
+| `waiting` | waits for an event outside the task manager |
+| `done`, `cancelled`, `failed` | end |
+
+A question to a human is a state of the task, not a sentence in a conversation. The agent writes the question into a
+comment, sets `needs_human` and ends the run. The human's answer is a comment that wakes the task. When the answer arrives in
+a thread instead of a comment, the agent first writes it into the task as a comment under the operator's name and only then
+acts. Otherwise the task manager does not know about the answer and the task stands.
+
+Waiting has two forms, and both have a reason. Waiting for another task is a blocker, a link "this task stands on that one",
+with a mandatory reason that says what the blocker stands on, who will remove it and what moves the task afterwards. Waiting
+for an event outside the task manager is the state `waiting` with a reason and a time, and after the event the task is closed
+or resumed. Bare blocker numbers do not tell the reader what the task stands on.
+
+A fix to work on a closed task goes into a new task, because a comment on a closed task wakes nobody.
+
+A task with several steps follows a four-step procedure.
+
+1. Unclear request. The agent writes at most five questions whose answer it cannot find in the code or in the task, and ends
+   in the state `needs_human`. With more questions it proposes to split the task.
+2. Plan. The agent writes into a comment a plan with four parts. What we do (two to four sentences), steps (at most seven),
+   what we do not do (never empty) and how we verify that it works (one to three tests). The plan does not go into a file in
+   the repo. Approval is a comment. The operator's deputy approves the plan, and the operator approves a reserved matter.
+3. Build. A step that does not fit into one run is a subtask chained with blockers. The agent does not do work outside the
+   plan. It proposes a change of plan in a comment and ends in the state `needs_human`.
+4. Check. Before closing, the agent writes a comment with three answers with proof. Does it work (a command and its output)?
+   Does it match the plan (what is missing, what was added, what else the change touches)? Is it simple (what could be
+   deleted)? If an answer does not hold, the result is `needs_human` with a reason.
+
+The agent manager is responsible for the flow of work. An open task that nobody works on is its mistake. It watches a blocker
+assigned to a human, and when nobody takes it within 30 minutes, it sends the operator a notification with the task number and
+what exactly stands. The sentence "waiting for the operator" without a time and without a notification is forbidden.
+
+Hooks keep the task manager and the turn consistent. The hook `todo_after_comment.mjs` stops a turn in which the agent wrote
+a comment on its task and the task stayed in the state `todo`, and gives a procedure (close, wait, block or ask a question).
+The hook `tasker_work.mjs` announces the work of a sub-agent from the task number in its assignment. The hook
+`tasker_root.mjs` rejects a direct task manager command under root and sends the agent to the wrapper `bin/tk`. The wrapper
+is a small script that runs the task manager command under the right user and with the agent's name in the environment. A
+task number in a text for the operator is a link to its page, and the hook `reply_guard.mjs` stops an unlinked mention and
+gives a ready replacement.
+
+### How to build it
+
+1. Pick a task manager with a command line. If you have none, start with a task file in the project repo, for example
+   `ulohy/0042.md`. The file has a header between two `---` lines with the fields `id`, `nazov`, `projekt`, `stav`,
+   `riesitel`, `dovod`, `hotovo` and `blokery` (a list of task numbers), and below it comments, each line with a date and a
+   name. Both a hook and a human can read such a file. Add the hooks of this chapter only when you have a tool that a machine
+   can read.
+2. Fix the states from the table and the duty to give a reason for a blocker and for waiting. The command looks like
+   `tasker block <id> --by <id> --reason "<reason>"` and fails without a reason. If you use files, the repo check rejects
+   `stav: blocked` without a non-empty comment about the cause.
+3. In the environment rules write that work is a task with a project, a reason and a done condition.
+4. Write the four-step procedure into the environment and use it first on one project.
+5. Introduce the rule that an answer of the operator in a thread is first written into the task.
+6. Write a Stop hook that stops a turn after which the agent's commented task stayed in the state `todo`. The hook finds tasks
+   where the assignee is the agent, the state is `todo` and the last comment was written by the agent after the last message
+   of the operator. Read the state from the task manager database read-only, or from files.
+7. In the role of the agent manager write that an open task without work is its mistake, and the 30-minute limit for a blocker
+   assigned to a human.
+8. Decide how a task reaches the agent. When somebody assigns a task to the agent or adds a comment, the assignee must find
+   out. Write a small bridge that watches the events of the task manager and writes a message to the assignee's mailbox
+   (chapter 8).
+
+### What it requires from the runtime
+
+- A task manager that can be operated from the command line, so the agent uses it with a command tool. A web interface is not
+  enough.
+- A task state that a machine can read for the hooks. Best a database or files that the hook opens read-only.
+- A way for the assignee to learn about a change (chapter 8), otherwise tasks stand until the agent looks on its own.
+- A PreToolUse hook for the tools that start a sub-agent, if you want to announce the work of sub-agents. The hook input
+  carries the sub-agent's assignment, from which the hook extracts the task number.
+
+### Our example
+
+The rules are in `env/server/CLAUDE.md`, parts "Task manager" ("Správca úloh") and "Task procedure" ("Postup úlohy"). The
+deputy approves the plan according to `roles/zastupca-operatora.md`. The flow of work and the 30 minutes for a blocker are in
+`roles/spravca-agentov.md`, part "What it manages and the flow of work" ("Čo spravuje a tok práce"). The hooks are
+`hooks/todo_after_comment.mjs` and `hooks/tasker_work.mjs`. The wrapper is `bin/tk`. The hook `hooks/tasker_root.mjs`, the
+script `bin/uloha-webu.sh` (creates a task for a web agent together with a task for a designer's review) and the hook
+`hooks/web_review.mjs` (rejects everything else) are tied to our task manager and are not in the repo, and the table "What is
+not in the repo" in `README.md` describes them. The task manager itself is not in this repo, it is a separate tool. The
+bridge that delivers task events into mailboxes is in the repo `https://github.com/gavalierm/agent-runtime`, which is still
+private and will be published after cleanup (D0171).
