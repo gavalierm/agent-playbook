@@ -852,3 +852,274 @@ script `bin/uloha-webu.sh` (creates a task for a web agent together with a task 
 not in the repo" in `README.md` describes them. The task manager itself is not in this repo, it is a separate tool. The
 bridge that delivers task events into mailboxes is in the repo `https://github.com/gavalierm/agent-runtime`, which is still
 private and will be published after cleanup (D0171).
+
+## 8. Messages between agents
+
+### Problem
+
+You have two agents in persistent sessions, and the first needs a result from the second, for example a deployment to a test
+machine. The operator should not be a postman who copies messages from one window to another. When the first agent writes
+text straight into the input of the second, it interrupts the second one's running work or gets in the way of what a human is
+typing right now. When it waits for the reply in a loop, the turn stays open and you pay for every further reading of the
+context. And when you do not agree on who waits for whom, one side waits for nothing and the other does not know that
+somebody expects it.
+
+### When you need it
+
+You do not need it when you have one agent. You do not need it either when agents write to each other with comments in the
+task manager (chapter 7) and that is enough, because a comment wakes the assignee and the task carries the state.
+
+You need it with two or more agents in persistent sessions who send each other orders and results outside tasks. That means
+an urgent matter that cannot wait for a task, a question on which the sender is blocked, and a handover of state between
+machines.
+
+Why files in a directory and not a queue or a database. You need no service that can fail, and nothing gets installed. You
+read a message with `ls` and `cat` and fix it with an editor. A rename with `mv` on one disk is atomic, so the addressee
+never sees a half-written file. A file survives a restart of the process and of the machine, and a message in an in-memory
+queue does not. A queue or a database pays off at hundreds of messages a second. For us it is tens, up to about a hundred
+messages a day in the mailbox of one agent.
+
+### Mechanism
+
+Every agent has a mailbox, a directory with the subdirectories `inbox` and `processed`. A message is a file in the
+addressee's `inbox`. Writing goes through a hidden temporary file and `mv`, so the addressee never reads a half-written file.
+The file name has the form `<sender>-[<topic>-]<YYYYMMDD-HHMMSS>-<pid>.md`.
+
+The waker is a program that delivers a message from the mailbox into the running session of the agent and moves the file to
+`processed`. It runs continuously next to the agents and does not call a model. It never sends a message into a running run.
+It sends the messages that wake in one batch after a short quiet window, so messages that arrive close together go in one
+turn.
+
+Every message the waker sends is one model turn, and that turn reads the whole context again. A measurement on 19 Oct 2026
+showed that 36 of 69 turns had no action. So the first line of a message says what the sender expects of it (the message
+mode), and scripts write it, not the model. The header keys and mode values in this chapter are written as our scripts write
+them, in Slovak, with the meaning in parentheses. If you build your own, use your own words.
+
+| first line | means | waker of the addressee | reply to it |
+|---|---|---|---|
+| `odpoveď: čakám` (reply: I wait) | an order or a question, the sender is blocked on the reply | wakes | mandatory, wakes the sender |
+| `odpoveď: nečakám` (reply: I do not wait) | a tool message or a summary, the result is read at the next turn | wakes | goes without waking |
+| `odpoveď: na vedomie` (reply: for information) | a report, a result, a confirmation | does not wake, holds until the next batch | is not written |
+
+A message `na vedomie` wakes only as a reply to a message the sender waits on. So a reply `na vedomie` to a message `čakám`
+wakes the sender, and a reply `na vedomie` to a message `nečakám` does not.
+
+The send script writes a new message as `čakám`, with the option `--vedomie` as `na vedomie`, and has no other mode. The reply
+script writes `na vedomie` by default, and when it needs something back, it has `--cakam` or `--necakam`. A reply `na vedomie`
+to a message `nečakám` does not wake the sender, so the send script rejects the mode `nečakám` for a new message. A message
+`na vedomie` is not answered, and the confirmation "received" is not sent. Work that arises from it is a new order.
+
+A reply is paired with the original message by the header `k:` (to), so the file name can be anything. The agent also writes
+from a topic thread (a thread is a persistent session of the agent in its tool, a topic thread is another thread of the same
+agent that runs one topic). So after the write the script stores a reply route, meaning the message key and the sender's
+thread, and the waker uses it to deliver the reply to the topic thread, not to the main one.
+
+A message to an agent is a work order. An order carries the task, the context the addressee lacks, and the done condition. A
+reply carries the result, the proof (a command and its output) and what is open. A path, a line or a commit replaces a copy.
+Uncertainty is written with the word "unverified". No greetings, thanks, apologies or restating.
+
+Why not shared memory. Deputies on different machines pass state through mailboxes, not through shared memory. A message in a
+mailbox has a sender, an addressee, a topic and an expected reply. An entry in shared memory carries none of that, so nobody
+knows who should act on it or who is waiting.
+
+### How to build it
+
+When you do not need mailboxes (part "When you need it"), skip the whole chapter. Otherwise proceed in this order.
+
+#### 1. Directories and permissions
+
+For each agent create `<root>/<agent>/inbox` and `<root>/<agent>/processed`. The directory `inbox` has the mode `2770`
+(setgid) and a shared group that contains the agents who write into it and the user of the waker. An agent name is lower case
+letters, digits and underscore, at most 31 characters, starting with a letter. For us there is also an `outbox` next to the
+agent, from the time when replies were read from it. If you build from scratch, you do not need it, a reply is an ordinary
+message into the `inbox` of the original sender.
+
+An agent on another machine has no mailbox on its own disk. The mailbox is on the machine where the waker runs, and a sender
+from the second machine writes the file over `ssh` with the same procedure (hidden `.tmp`, then `mv`).
+
+#### 2. Message format
+
+The header is lines at the start of the file, then the text of the message. The first line is always `odpoveď:`. A message
+without it is delivered as waking, so that hand-written messages can be delivered too.
+
+```
+odpoveď: <čakám|nečakám|na vedomie>
+k správe: <mode of the original message>      (reply only, second line)
+id: <file name>
+od: <sender>
+komu: <addressee>
+téma: <topic, empty for the main thread>
+k: <id of the original message>                (reply only)
+```
+
+The line `id:` is the file name. The line `k správe:` (to message) is copied by the reply script from the first line of the original
+message, and the waker uses it to decide whether a reply `na vedomie` should wake. The waker removes the header from the text
+for the model and puts it into a tag (point 5). The file name must match the pattern
+`^[a-z][a-z0-9_]{0,30}-[A-Za-z0-9._-]{1,120}$`, and the waker skips other files in `inbox`. It also skips files whose name
+starts with a dot or ends with `.tmp`, those are writes in progress.
+
+An example message:
+
+```
+odpoveď: čakám
+id: agent_a-deploy-20261024-101500-4242.md
+od: agent_a
+komu: agent_b
+téma: deploy
+
+Task. Deploy version 3 to the test machine.
+Context. The version is in the tag v3. Do not change the database.
+Done when `curl -sI https://test.example/` returns 200.
+```
+
+An example reply that agent B writes after the deployment:
+
+```
+odpoveď: na vedomie
+k správe: čakám
+id: agent_a-deploy-20261024-101500-4242.md
+od: agent_b
+komu: agent_a
+téma: deploy
+k: agent_a-deploy-20261024-101500-4242.md
+
+Done. `curl -sI https://test.example/` returns `HTTP/2 200`. Open: nothing.
+```
+
+#### 3. The send script
+
+Usage: `ask_agent.sh [--vedomie] [--k <id>] <addressee> <topic> < message.md`. The script takes these steps.
+
+1. It verifies that the addressee and the sender have the form of an agent name and that the addressee's `inbox` exists.
+   Otherwise it exits with code 1 and writes nothing. The sender is an environment variable with the agent's name.
+2. It rejects an empty message.
+3. It rejects the option `--necakam` with a message that you wait for the reply and should leave the default, or that a
+   report without a reply is `--vedomie`. The reason is in the table above, a reply `na vedomie` to `nečakám` does not wake
+   the sender, who would wait for nothing.
+4. It builds the name `<sender>-[<topic>-]<time>-<pid>.md` and the header. The mode is `čakám`, with `--vedomie` it is
+   `na vedomie`.
+5. It sets `umask 007`, writes `.<name>.tmp`, sets its group to that of the `inbox` if the directory does not inherit it, and
+   does `mv` to the final name.
+6. It stores the route (point 7) and prints the message id.
+
+Optionally, for a new message the script verifies that the topic is in the addressee's list of topics (a file next to its
+`inbox`), and for an unknown topic it prints the valid topics and sends nothing. You do not need that at the start.
+
+#### 4. The reply script
+
+Usage: `reply.sh [--cakam|--necakam|--vedomie] <message id> < reply.md`. The agent calls it with the command that the waker
+prints in the message tag.
+
+1. It verifies the form of the id and rejects an empty reply.
+2. The default mode is `na vedomie`. When the body of the reply contains a line starting with `Úloha` (Task), `Otázka`
+   (Question) or `Hotovo:` (Done:), and the mode is not chosen explicitly, the script rejects the write. Such a body is an
+   order, and a reply `na vedomie` would wake nobody.
+3. It finds the original message in `processed` (the waker has already moved it there), and takes its first line for
+   `k správe:` and the topic.
+4. It builds the header with `k: <id of the original message>`, `od:` is the replying agent, `komu:` is the sender of the
+   original message.
+5. It writes the file into the `inbox` of the sender of the original message the same way as the send script (`.tmp`, `mv`),
+   under the name `<from>-[<topic>-]<time>-<pid>.md`. For us the reply has a name made from the prefixes of both sides and
+   the core of the original name. You do not need that for your build, the reply is paired by `k:`.
+6. It stores the route (point 7).
+
+#### 5. What your runtime must be able to do, and how we do it
+
+The waker needs two things. It must know whether the agent is working in the thread right now, and it must be able to send
+text into its session without interrupting a running run. If your tool cannot do either, it is enough that the agent looks at
+`inbox` at the start of every turn, but then a message does not wake the agent. We have not tried that form.
+
+For us agents run as persistent threads in T3 Code, and the waker does this.
+
+1. It reads the thread state from the HTTP list of threads of the server. A thread row carries the id of the active run, the
+   run state, a flag of waiting for approval and the thread state. A thread is busy when it has an active run, when it waits
+   for approval by a human, when its state is not final (an idle thread, a completed, interrupted, failed or cancelled run) or
+   when it ended with a subscription limit error and the renewal time has not come yet.
+2. It sends the text with the command `message.dispatch` over a WebSocket. T3 Code 0.1.0 has no HTTP call for a message into a
+   thread, so the waker requests a one-time ticket, opens a WebSocket and sends the command. The command carries the delivery
+   mode `queue_after_active`, meaning queue after the active run. If a run started between reading the state and sending (for
+   example a human wrote into the thread), the message queues behind it and interrupts nothing.
+3. The command also carries a `commandId`, which the waker derives from the file names of the batch, the attempt number and a
+   random batch id. The server remembers the receipt of every `commandId`, so a repeat after a crash of the waker does not
+   create a second message.
+4. As a fallback, text can be sent to a CLI client in `tmux` with `tmux send-keys -l` and Enter as a separate step. `tmux` does
+   not know the run state and cannot tell whether the agent is typing, so it is only a backup.
+
+For your runtime this means two requirements. You need a way to find out that a session is not working right now, and a way
+to put input into it so that it queues behind running work, or at least so that the waker waits for its end. If the runtime
+has no idempotent commands like `commandId`, a crash between sending and moving the file can deliver a message twice. So move
+the file to `processed` right after a successful send.
+
+#### 6. The waker
+
+The waker is a loop. One pass does this.
+
+1. It reads `inbox` (files with a valid name, without a leading dot and without `.tmp`) and sorts them by modification time.
+   An empty `inbox` ends the pass.
+2. For each message it finds the target thread and whether it wakes. A message with `odpoveď: čakám` or `nečakám` and a
+   message without the line wake. A message `na vedomie` wakes only when it has `k:` to a message that the sender sent as
+   `čakám`, or the line `k správe: čakám`. Otherwise it is held.
+3. The target thread is the thread from the reply route (point 7). A message without `k:` or without a route goes to the main
+   thread of the agent.
+4. Quiet window. The batch for a thread goes out when `AGENT_BATCH_WAIT_S` (30 s for us) has passed since the last waking
+   message, or `AGENT_BATCH_MAX_WAIT_S` (120 s) since the first waking message. The batch is everything that wakes, and it
+   goes out as one message, so messages that arrive close together use one turn. The value `0` turns the window off.
+5. It checks whether the thread is working (point 5). If so, it sends nothing and tries again after the next interval.
+6. It builds the batch text. At most 20 waking messages, each up to 100 kB, and at most 10 held messages `na vedomie`, each
+   up to 4 kB, under the heading "For information" ("Na vedomie"). Each message is in a tag:
+
+   ```
+   <schranka od="agent_a" tema="deploy" id="agent_a-deploy-20261024-101500-4242.md" odpoveď="čakám">
+   odpoveď: reply.sh <id> <<'EOF' ... EOF (the sender waits for it)
+
+   Task. Deploy version 3 to the test machine.
+   </schranka>
+   ```
+
+   For messages `na vedomie` the reply line is "a reply is not written".
+7. It writes the batch to a state file (a list of files, the attempt number, the batch id), sends it and, after receipt, moves
+   the files to `processed`. If a file with the same name is already there, it appends the time to the name. Then it deletes
+   the state. If the server rejects the batch, it raises the attempt number, so the rejected `commandId` is not repeated.
+8. It sleeps `POLL_S` (5 s for us). On a connection error it waits twice as long, at most 300 s.
+
+A held message `na vedomie` stays in `inbox`, nothing is deleted. It goes out under the heading with the next waking batch to
+the same thread. The morning summary moves a message `na vedomie` older than 24 hours to `processed` and prints it.
+
+#### 7. The reply route
+
+The route solves the problem that an agent writes from a topic thread and the reply must come back there, not to the main
+thread.
+
+1. When writing a message (and a reply), the script finds the thread the agent writes from. It uses the session id that the
+   agent process has in its environment (for us `CLAUDE_CODE_SESSION_ID`) and that the tool lists with the thread. After a
+   clean context the process has a new session, so the id is also searched in the argument `--resume` of the process command
+   line.
+2. If the thread is not the main one, it writes into the file `routes.json` in the waker's state a record with the message key
+   (the name without the prefixes of both sides), the other side and the thread. A record older than 30 days drops out. For
+   the main thread no record is written, and an older one with the same key is deleted.
+3. For a message with `k:`, the waker finds the record by `k:`. If the thread exists and is not archived, the message goes
+   there. Otherwise it goes to the main thread with the line `[budič] Správa patrí vláknu <id>, to je archivované, preto je tu.`
+   (waker: the message belongs to thread <id>, which is archived, so it is here).
+4. If the script does not find the thread, the message goes out without a route and the reply comes to the main thread. The
+   script prints that.
+
+Our version can also deliver a new message about a topic to the topic thread, using the list of topics. You do not need that
+at the start.
+
+#### 8. Rules for the agent and a hook
+
+Write a rule that after sending a message `čakám` the agent ends the turn and does not wait for the reply, the waker will
+deliver it. Add a PreToolUse hook that rejects a command with `sleep` over ten seconds or a loop with `sleep` in the
+foreground. The rejection carries the line "Correct procedure:" (chapter 6).
+
+### Our example
+
+The mailbox rules are in `env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). The send script, the
+reply script, the waker and the routes are in our runtime, which is not in this repo. It lives in the repo
+`https://github.com/gavalierm/agent-runtime`, which is still private and will be published after cleanup (D0171). So the
+chapter describes it in a way that does not make you depend on the link. The scripts are also described by the table "What is
+not in the repo" in `README.md`, including what you need from them to build your own. They are `bin/ask_agent.sh` (the send
+script, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (the reply script), `runtime/driver.mjs` (the waker),
+`runtime/route.mjs` (reply routes and the list of topics) and `runtime/README.md` (the runtime description, part "Waking"
+("Budenie")). The hook against waiting, `hooks/no_model_wait.mjs`, is not in the repo. The rules for messages to agents are in
+`global/CLAUDE.md`, §2.
