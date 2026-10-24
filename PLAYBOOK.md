@@ -360,6 +360,16 @@ Rozhodnutie povedané v rozhovore zanikne s reláciou. Agent sa o týždeň spý
 veľkom súbore sa nedá kontrolovať a staré rozhodnutie sa nahradí novým bez opravy miest, ktoré tvrdia to staré. Pokyny
 agentov potom tvrdia veci, ktoré dávno neplatia.
 
+### Kedy to potrebuješ
+
+Potrebuješ to, keď sa agent opakovane pýta na veci, ktoré si už rozhodol, alebo keď sa pravidlá menia a staré znenia
+ostávajú v personách, pamäti a dokumentoch. Potrebuješ to aj vtedy, keď chceš o rozhodnutí vedieť, kto ho urobil
+a akou mocou.
+
+Nepotrebuješ to pri jednom agentovi a desiatke pravidiel. Vtedy stačí jeden súbor s odrážkami v repe. Register založ,
+keď nájdeš v pokynoch dve tvrdenia, ktoré si protirečia, alebo keď sa ti stane, že agent robí podľa rozhodnutia, ktoré
+už neplatí.
+
 ### Mechanizmus
 
 Rozhodnutie je jeden súbor v `rozhodnutia/`, pomenovaný `D0001.md`, `D0002.md` a tak ďalej. Hlavička je zoznam polí
@@ -370,10 +380,10 @@ Rozhodnutie je jeden súbor v `rozhodnutia/`, pomenovaný `D0001.md`, `D0002.md`
 | `id` | `D` a štyri číslice, rovná sa menu súboru |
 | `nazov` | jedna veta, čo platí |
 | `stav` | `platí`, `nahradené` alebo `zrušené` |
-| `kluc` | bodková cesta jednej veci, medzi platnými záznamami jedinečná |
-| `rozsah` | značky z `rozhodnutia/ROZSAHY.md` |
+| `kluc` | bodková cesta jednej veci, napríklad `odpoved.strop-viet`, medzi platnými záznamami jedinečná |
+| `rozsah` | značky z `rozhodnutia/ROZSAHY.md`, teda témy, ktorých sa rozhodnutie týka |
 | `agenti` | mená agentov malými písmenami, alebo `*` |
-| `rozhodol`, `moc` | kto rozhodol a akou mocou |
+| `rozhodol`, `moc` | kto rozhodol a akým mandátom (operátor, zástupca, správca agentov a podobne) |
 | `zapisal`, `datum` | kto záznam zapísal a kedy |
 | `zdroj` | kde to zaznelo, napríklad vlákno, správa alebo úloha |
 | `nahradza`, `nahradene` | odkazy medzi záznamami, obe strany ukazujú na seba |
@@ -384,19 +394,22 @@ Telo má najviac päť viet. Hovorí, čo platí, prečo, a čo sa zamietlo. His
 
 Kľúč bráni dvom platným záznamom o jednej veci. Skript zápisu skončí chybou, keď nový záznam s platným kľúčom
 nehovorí, že starý nahrádza. Moc bráni, aby o pravidlách rozhodol agent bez mandátu. Tabuľka rozsahu a moci je v
-`rozhodnutia/ROZSAHY.md` a kontrola ju vynucuje.
+`rozhodnutia/ROZSAHY.md` a kontrola ju vynucuje. Súbor `INDEX.md` je generovaný prehľad všetkých záznamov, ručne sa
+neupravuje.
 
-Zápis ide jednou cestou. Skript `bin/rozhodni.sh` pridelí číslo, zapíše súbor, prepíše generovaný `INDEX.md`,
-commitne pod menom agenta a pushne. Hook `rozhodnutia_guard.mjs` (PreToolUse) zamietne každý iný zápis do záznamov,
-vrátane `sed -i`, presmerovania a `tee`. Voľba `--dry-run` nezapíše nič, voľba `--zrus` rozhodnutie zruší.
+Zápis ide jednou cestou. Skript `bin/rozhodni.sh` pridelí číslo, zapíše súbor, prepíše `INDEX.md`, commitne pod menom
+agenta a pushne. Hook, ktorý zamietne každý iný zápis do záznamov, beží pred použitím nástroja. Zachytí zápis cez
+nástroj na úpravu súboru aj príkaz v shelli, vrátane `sed -i`, presmerovania a `tee`. Voľba `--dry-run` nezapíše nič,
+voľba `--zrus` rozhodnutie zruší.
 
 Zrušené tvrdenia sa kontrolujú strojom. Keď rozhodnutie niečo mení, jeho pole `zrusene-tvrdenie` nesie regulárny
 výraz starej vety. Kontrola prehľadá pokyny agentov a pamäť a zlyhá na každom mieste, ktoré starú vetu ešte tvrdí.
 Druhá kontrola prejde cesty v spätných apostrofoch v pokynoch a zlyhá na ceste k súboru, ktorý neexistuje. Tretia
-zlyhá na pamäti, ktorá tvrdí, že niečo čaká na operátora, alebo na rozhodnutí bez čísla.
+zlyhá na pamäti, ktorá tvrdí, že niečo čaká na operátora bez čísla úlohy, alebo spomína rozhodnutie bez čísla záznamu.
 
-Agent sa o rozhodnutiach dozvie z hooku `rozhodnutia_context.mjs` (SessionStart), ktorý vloží zmeny od posledného štartu a
-úlohy čakajúce na operátora, z hooku `rules_delta.mjs` a príkazom `node lib/rozhodnutia.mjs list --agent <meno>`.
+Agent sa o rozhodnutiach dozvie z troch miest. Hook pri štarte relácie vloží zmeny od posledného štartu a úlohy
+čakajúce na operátora. Hook zmeny pravidiel z kapitoly 2 vloží zmenu záznamu do najbližšieho promptu. A agent si
+zoznam vypíše sám, `node lib/rozhodnutia.mjs list --agent <meno>`.
 
 Poznámka v rozhovore nie je rozhodnutie. Zapíše sa až po tom, čo operátor povie áno na text. Kým o veci diskutujú,
 záznam sa nepíše.
@@ -405,13 +418,16 @@ záznam sa nepíše.
 
 1. Založ `rozhodnutia/` a `rozhodnutia/README.md` so schémou polí.
 2. Napíš `rozhodnutia/ROZSAHY.md` s tabuľkou značiek a tabuľkou "rozsah smie moc". Začni piatimi značkami.
-3. Napíš skript zápisu. Pridelí ďalšie číslo, zapíše hlavičku a telo zo štandardného vstupu, spustí kontrolu a
-   commitne.
+3. Napíš skript zápisu. Pridelí ďalšie číslo (najvyššie číslo v priečinku plus jedna), zapíše hlavičku a telo zo
+   štandardného vstupu, spustí kontrolu a commitne. Zápis nikdy neprepíše existujúci súbor.
 4. Napíš kontrolu. Id sa rovná menu súboru, kľúč je medzi platnými jedinečný, odkazy `nahradza` a `nahradene` ukazujú
    na seba, súbory z `subory` existujú, značka je v tabuľke, moc sedí k rozsahu.
-5. Napíš zoznam zrušených tvrdení a kontrolu, ktorá ich hľadá v pokynoch a v pamäti.
-6. Zapoj hook PreToolUse, ktorý zamietne zápis do `rozhodnutia/` mimo skriptu, hook SessionStart so zmenami od
-   posledného štartu a spusti kontrolu v pre-commit hooku.
+5. Napíš zoznam zrušených tvrdení a kontrolu, ktorá ich hľadá v pokynoch a v pamäti. Zoznam môže byť obyčajný textový
+   súbor, kde riadok je regulárny výraz, tabulátor a dôvod.
+6. Zapoj hook PreToolUse, ktorý zamietne zápis do `rozhodnutia/` mimo skriptu. Hook zamietne nástroj na zápis, ktorého
+   cesta vedie do záznamu `rozhodnutia/D0xxx.md`, a príkaz v shelli, ktorý spomína taký záznam spolu so `sed -i`,
+   `tee` alebo presmerovaním. Zamietnutie nesie riadok "Správny postup:" (kapitola 6).
+7. Zapoj hook SessionStart so zmenami od posledného štartu a spusti kontrolu v pre-commit hooku.
 
 Záznam:
 
@@ -434,13 +450,22 @@ Odpoveď operátorovi má najviac šesť viet prózy. Dôvod je, že dlhú odpov
 Zamietnutý bol strop dvanásť viet, lebo ho agenti pravidelne dosiahli.
 ```
 
+### Čo od runtime vyžaduje
+
+- Hooky PreToolUse a SessionStart, ktoré vedia pridať text do kontextu alebo zamietnuť nástroj s dôvodom (kapitola 6).
+- Hook PreToolUse vidí aj príkazy v shelli, nielen zápisy cez nástroj na úpravu súborov. Ak runtime shell hookom
+  nevidí, zápis cez `sed` nechytíš a stráž to kontrolou v pre-commit hooku.
+- Prístup k gitu a možnosť pushnúť pod menom agenta.
+
 ### Náš príklad
 
 Schéma je v `rozhodnutia/README.md`, značky v `rozhodnutia/ROZSAHY.md`. Ukážkové záznamy sú `rozhodnutia/D0141.md`,
 `rozhodnutia/D0142.md` a `rozhodnutia/D0144.md`, ktorý nahrádza `rozhodnutia/D0010.md`. Zápis robí `bin/rozhodni.sh`,
 logiku a kontrolu `lib/rozhodnutia.mjs` s testom `lib/rozhodnutia.test.mjs`. Zrušené tvrdenia číta `lib/doc_paths.mjs`
 zo súboru `lib/retired_claims.txt`, pamäť kontroluje `lib/memory_claims.mjs`. Hooky sú `hooks/rozhodnutia_guard.mjs` a
-`hooks/rozhodnutia_context.mjs`. Záznamy D0010, D0141, D0142 a D0144, skripty `lib/doc_paths.mjs` a `lib/memory_claims.mjs`, zoznam `lib/retired_claims.txt` a oba hooky `rozhodnutia_*` v repe nie sú. Záznamy sú súkromné, ostatné sú viazané na naše úlohy a pamäť. Čo robia, je v tabuľke "Čo v repe nie je" v `README.md`.
+`hooks/rozhodnutia_context.mjs`. Záznamy D0010, D0141, D0142 a D0144, skripty `lib/doc_paths.mjs` a
+`lib/memory_claims.mjs`, zoznam `lib/retired_claims.txt` a oba hooky `rozhodnutia_*` v repe nie sú. Záznamy sú
+súkromné, ostatné sú viazané na naše úlohy a pamäť. Čo robia, je v tabuľke "Čo v repe nie je" v `README.md`.
 
 ## 5. Slučka chyby
 
