@@ -1081,11 +1081,23 @@ Silný model, ktorý robí všetko sám, je drahý a pomalý. Lacnejší model b
 Úloha zadaná krok po kroku viaže zadávateľa na každý detail. A práca, ktorú robí niekto, kto na ňu nemá práva, rozbíja
 hranice jurisdikcie.
 
+### Kedy to potrebuješ
+
+Potrebuješ to, keď máš aspoň dvoch agentov s rôznymi právami (jeden má root, druhý nie) alebo keď platíš za modely
+rôznych cien a chceš na každú prácu primeraný. Potrebuješ to aj vtedy, keď silná relácia míňa tokeny na
+mechanickú stavbu, ktorú by zvládol lacnejší model.
+
+Nepotrebuješ to pri jednom agentovi a jednom modeli. Vtedy delegovanie nemá komu. Ani to nepotrebuješ pri práci,
+ktorú dokončíš za pár volaní. Zadanie sub-agentovi stojí napísanie zadania a čítanie výsledku, čo sa pri malej práci
+nevyplatí.
+
 ### Mechanizmus
 
 Prácu robí najnižšia úroveň, ktorá na ňu má práva. Silnejší model navrhuje a overuje, lacnejší stavia. Relácia na
 najsilnejšom modeli dá implementáciu sub-agentovi na lacnejšom modeli a sama si nechá návrh a overenie. Silnejší
-sub-agent ide len na návrh, audit alebo prácu, ktorá s lacnejším zlyhala, a dôvod sa napíše.
+sub-agent ide len na návrh, audit alebo prácu, ktorá s lacnejším zlyhala, a dôvod sa napíše. Sub-agent je druhá relácia,
+ktorú hlavná relácia spustí na jednu dielčiu prácu. Vráti hlavnej relácii len výsledok, nie celý svoj rozhovor, takže
+hlavný kontext ostane malý.
 
 Pred každou úlohou pre agenta správca agentov postupuje v piatich krokoch.
 
@@ -1100,26 +1112,43 @@ hotovú prácu overí sám a nespolieha sa na správu agenta. Prístup, ktorý m
 robiť prácu agenta, správca vydá agentovi úzky prístup a prácu zadá jemu. Rýchlosť tiež nie je dôvod. Zakázané sú vety
 "zadal som to správcovi servera" pri úlohe bez rootu a "urobil som to sám, bolo to rýchlejšie".
 
-Úloha nesie číslo, aby bolo vidno, kto na nej pracuje. Zadanie sub-agentovi obsahuje text "úloha N". Hook
-`tasker_work.mjs` v PreToolUse pre nástroje Agent a Task číslo nájde a ohlási správcovi úloh `tasker work N`, po
-skončení sub-agenta (SubagentStop) záznam ukončí. Bez čísla v zadaní vyzerá úloha ako stojaca. Pred zadaním úlohy
-sub-agentovi agent pozrie posledné záznamy práce na úlohe, aby ju nerobili dvaja naraz.
+Úloha nesie číslo, aby bolo vidno, kto na nej pracuje. Zadanie sub-agentovi obsahuje text "úloha N". Hook pred
+spustením nástroja na sub-agenta (PreToolUse pre nástroje Agent a Task) číslo nájde a ohlási správcovi úloh, že na
+úlohe niekto pracuje. Po skončení sub-agenta (SubagentStop) záznam ukončí. Bez čísla v zadaní vyzerá úloha ako stojaca.
+Pred zadaním úlohy sub-agentovi agent pozrie posledné záznamy práce na úlohe, aby ju nerobili dvaja naraz.
 
 ### Ako to postaviť
 
-1. Do globálnych pravidiel napíš, ktorý model robí návrh a overenie, ktorý stavbu a kedy sa smie ísť vyššie.
+1. Do globálnych pravidiel napíš, ktorý model robí návrh a overenie, ktorý stavbu a kedy sa smie ísť vyššie. Pri
+   Claude Code zvolíš model sub-agenta v zadaní nástroja Agent parametrom `model`.
 2. Do roly správcu agentov napíš päť krokov výberu agenta a dve zakázané vety.
-3. Do prostredia napíš, že zadanie sub-agentovi nesie "úloha N", a napíš hook, ktorý číslo nájde.
+3. Do prostredia napíš, že zadanie sub-agentovi nesie "úloha N", a napíš hook, ktorý číslo nájde. Hook robí toto.
+   1. V PreToolUse pre nástroj `Agent` (a starý názov `Task`) nájde v `tool_input.prompt` regulárnym výrazom číslo za
+      slovom "úloha".
+   2. Ohlási prácu príkazom správcu úloh a uloží si zhodu `tool_use_id` a čísla úlohy do súboru stavu relácie.
+   3. V SubagentStop sub-agenta nevidí zadanie, preto záznam nájde cez uložený súbor. Keď v relácii nezostal iný
+      sub-agent s tou istou úlohou, ukončí záznam práce.
+   4. Pri chybe alebo bez čísla mlčí s kódom 0 a nikdy nezablokuje nástroj.
 4. Napíš šablónu zadania s cieľom, kontextom, ktorý adresát nemá, a podmienkou hotového. Prvý riadok vyzerá `Úloha 120.
    Premenuj premennú X na Y v skriptoch v bin/. Hotovo, keď grep na X je prázdny.`
-5. Z postupu zadaného druhýkrát ručne sprav skill so skriptom.
+5. Z postupu zadaného druhýkrát ručne sprav skill so skriptom. Skill je súbor s popisom, kedy ho použiť, a skript
+   urobí každý krok, ktorý nepotrebuje úsudok.
+
+### Čo od runtime vyžaduje
+
+- Spustenie sub-agenta z relácie s voľbou modelu. Claude Code to dáva nástrojom Agent s parametrom `model`.
+- Hook pred spustením tohto nástroja a hook po skončení sub-agenta, ktorých vstup nesie zadanie a id.
+- Správca úloh (kapitola 7), do ktorého vieš zapísať, že na úlohe niekto pracuje. Bez neho je číslo úlohy v zadaní
+  len zvyk.
+- Pre rozdelenie práv stroje alebo používatelia, ktorých právo sa dá oddeliť (root a ostatní), a persona, ktorá hranice
+  jurisdikcie opisuje.
 
 ### Náš príklad
 
 Pravidlo modelov a odovzdania práce je v `global/CLAUDE.md`, §6. Delegovanie je v `roles/spravca-agentov.md`, časť
 "Delegovanie", pokyny agentom v časti "Pokyny agentom a oprava". Hook `hooks/tasker_work.mjs` s testom
-`hooks/tasker_work.test.mjs` ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`. Náš `skills/projekt-novy`
-(založenie projektu webu) v repe nie je, je viazaný na naše účty a domény.
+`hooks/tasker_work.test.mjs` ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`.
+Náš `skills/projekt-novy` (založenie projektu webu) v repe nie je, je viazaný na naše účty a domény.
 
 ## 10. Písanie
 
