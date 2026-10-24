@@ -88,7 +88,7 @@ git config core.hooksPath .githooks
 `pre-commit` aj `pre-push` spustia `node lib/public_check.mjs` a `node lib/path_check.mjs`. Ten prejde
 všetky súbory v gite a zlyhá kódom 1, keď nájde meno človeka, agenta, stroja,
 účtu alebo adresu zo vzorov v `lib/public_check.txt` (vzory sú v base64, aby
-zoznam mená nevyzrádzal). `pre-push` skontroluje aj meno autora a správy
+zoznam mená nevyzrádzal). Riadok zoznamu začínajúci znakom `+` je povolený odkaz, takto prejdú odkazy na verejné repá projektu. `pre-push` skontroluje aj meno autora a správy
 commitov, ktoré idú von.
 
 `path_check.mjs` prejde všetky `*.md` v repe a zlyhá kódom 1, keď text v apostrofoch spomína cestu (`bin/`, `lib/`, `hooks/`,
