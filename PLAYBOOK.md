@@ -18,9 +18,10 @@ Každá kapitola 1 až 11 má štyri časti. Problém hovorí, čo sa bez mechan
 robíme. Ako to postaviť dáva kroky, formát súboru a príklad. Náš príklad ukazuje cesty v tomto repe, kde si hotovú
 verziu prečítaš. Kapitola 12 je poradie práce na prvý týždeň.
 
-Cesty sú voči koreňu tohto repa, ak nie je uvedené inak. Na serveri je repo nasadené ako klon `/opt/agent-rules`,
-ktorý časovač každých 5 minút stiahne z gitu. Mapu repa nesie `README.md`, prečítaj ju prvú. Neskopíruj naše pravidlá
-ako text, sú odpoveďou na naše chyby a tvoje budú iné. Skopíruj mechanizmy, teda spôsob, ako sa pravidlo zapíše,
+Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
+žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
+prevádzky (jeho nasadenie na server je naša vec, nie súčasť návodu). Mapu repa nesie `README.md`, prečítaj ju prvú.
+Neskopíruj naše pravidlá ako text, sú odpoveďou na naše chyby a tvoje budú iné. Skopíruj mechanizmy, teda spôsob, ako sa pravidlo zapíše,
 načíta, skontroluje a opraví.
 
 ### Slovník
