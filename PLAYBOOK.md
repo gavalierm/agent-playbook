@@ -59,6 +59,10 @@ načíta, skontroluje a opraví.
 | tiché okno | doba bez novej budiacej správy (u nás 30 s), po ktorej dávka odíde, aby správy tesne za sebou išli spolu |
 | režim správy | prvý riadok správy `odpoveď: čakám`, `nečakám` alebo `na vedomie`, hovorí, čo odosielateľ od odpovede čaká |
 | trasa odpovede | záznam, z ktorého vlákna odosielateľ písal, podľa neho budič doručí odpoveď do toho vlákna |
+| úloha | záznam v správcovi úloh s projektom, dôvodom, podmienkou hotového, riešiteľom, stavom a komentármi |
+| riešiteľ | agent alebo človek, ktorý úlohu robí a ktorého správca úloh zobudí pri zmene |
+| podmienka hotového | zápis v úlohe, podľa ktorého sa dá rozhodnúť, či je hotová, najlepšie príkaz a jeho očakávaný výstup |
+| blokér | väzba "táto úloha stojí na tamtej" s povinným dôvodom, po uzavretí tamtej sa táto odblokuje |
 
 ### Predpoklady
 
@@ -711,11 +715,22 @@ Práca zadaná v rozhovore nemá dôvod, podmienku hotového ani stav. Nikto nev
 Otvorená úloha, na ktorej nikto nepracuje, sa stratí. Otázka na človeka v rozhovore sa stratí tiež, lebo sa nezobrazí
 tam, kde ju človek hľadá.
 
+### Kedy to potrebuješ
+
+Potrebuješ to, keď agent robí viac vecí naraz, keď práca trvá dlhšie než jednu reláciu, alebo keď na nej pracuje viac
+agentov. Potrebuješ to aj vtedy, keď sa operátor pýta "čo stojí a prečo".
+
+Nepotrebuješ to pri jednom agentovi a jednej úlohe, ktorú dokončí jedna relácia. Vtedy stačí rozhovor. Na začiatok
+stačí aj súbor na úlohu v repe projektu (časť "Ako to postaviť"). Hooky z konca kapitoly pridaj, až keď máš nástroj,
+ktorý vieš čítať strojom.
+
 ### Mechanizmus
 
-Bežná práca pre agenta je úloha v správcovi úloh (u nás Tasker). Každá úloha má projekt, dôvod, podmienku hotového a
-riešiteľa. Úloha bez projektu sa odmietne. Úloha bez riešiteľa po dokončení blokérov nikoho nezobudí, preto sa úloha,
-ktorú agent robí sám alebo cez sub-agenta, zakladá s riešiteľom.
+Bežná práca pre agenta je úloha v správcovi úloh (u nás Tasker). Správca úloh je nástroj s databázou úloh,
+príkazovým riadkom a webom. Každá úloha má projekt, dôvod, podmienku hotového a riešiteľa. Riešiteľ je agent alebo
+človek, ktorý ju robí. Podmienka hotového je zápis, podľa ktorého sa dá rozhodnúť, či je úloha hotová, najlepšie
+príkaz a jeho očakávaný výstup. Úloha bez projektu sa odmietne. Úloha bez riešiteľa po dokončení blokérov nikoho
+nezobudí, preto sa úloha, ktorú agent robí sám alebo cez sub-agenta, zakladá s riešiteľom.
 
 Stavy, ktoré pravidlá a hooky používajú:
 
@@ -732,9 +747,10 @@ Otázka na človeka je stav úlohy, nie veta v rozhovore. Agent zapíše otázku
 ukončí. Odpoveď človeka je komentár, ktorý úlohu zobudí. Keď odpoveď príde do vlákna namiesto komentára, agent ju
 najprv zapíše do úlohy komentárom s menom operátora a až potom koná. Inak správca úloh o odpovedi nevie a úloha stojí.
 
-Čakanie má dva tvary a oba majú dôvod. Čakanie na inú úlohu je blokér s povinným dôvodom, ktorý hovorí, na čom blokér
-stojí, kto ho odstráni a čo úlohu potom pohne. Čakanie na udalosť mimo správcu úloh je stav `waiting` s dôvodom a
-časom, po udalosti sa úloha uzavrie alebo obnoví. Holé čísla blokérov čitateľovi nepovedia, na čom úloha stojí.
+Čakanie má dva tvary a oba majú dôvod. Čakanie na inú úlohu je blokér, teda väzba "táto úloha stojí na tamtej", s
+povinným dôvodom, ktorý hovorí, na čom blokér stojí, kto ho odstráni a čo úlohu potom pohne. Čakanie na udalosť mimo
+správcu úloh je stav `waiting` s dôvodom a časom, po udalosti sa úloha uzavrie alebo obnoví. Holé čísla blokérov
+čitateľovi nepovedia, na čom úloha stojí.
 
 Oprava práce na zavretej úlohe ide novou úlohou, lebo komentár na zavretej úlohe nikoho nezobudí.
 
@@ -745,8 +761,8 @@ Pre úlohu s viac krokmi platí štvorkrokový postup.
 2. Plán. Agent zapíše do komentára plán so štyrmi časťami. Čo robíme (dve až štyri vety), kroky (najviac sedem), čo
    nerobíme (nikdy prázdne) a ako overíme, že to funguje (jedna až tri skúšky). Plán nejde do súboru v repe.
    Schválenie je komentár. Plán schváli zástupca operátora, vyhradenú vec operátor.
-3. Stavba. Krok, ktorý sa nezmestí do jedného behu, je podúloha zreťazená blokérmi. Prácu mimo plánu agent nerobí,
-   zmenu plánu navrhne komentárom a skončí v stave `needs_human`.
+3. Stavba. Krok, ktorý sa nezmestí do jedného behu, je podúloha zreťazená blokérmi.
+   na úlohe. Prácu mimo plánu agent nerobí, zmenu plánu navrhne komentárom a skončí v stave `needs_human`.
 4. Kontrola. Pred uzavretím agent zapíše komentár s tromi odpoveďami s dôkazom. Funguje to (príkaz a jeho výstup)?
    Sedí to s plánom (čo chýba, čo pribudlo, čoho iného sa zmena dotkne)? Je to jednoduché (čo by sa dalo zmazať)?
    Keď odpoveď neobstojí, výsledok je `needs_human` s dôvodom.
@@ -758,31 +774,49 @@ stojí. Zakázaná veta je "čaká na operátora" bez času a bez notifikácie.
 Hooky držia správcu úloh a ťah v súlade. Hook `todo_after_comment.mjs` zastaví ťah, v ktorom agent napísal komentár na
 svojej úlohe a tá ostala v stave `todo`, a dá postup (uzavrieť, čakať, blokovať alebo položiť otázku). Hook
 `tasker_work.mjs` ohlási prácu sub-agenta z čísla úlohy v jeho zadaní. Hook `tasker_root.mjs` zamietne priamy príkaz
-správcu úloh pod rootom a pošle agenta k obalu `bin/tk`. Číslo úlohy v texte pre operátora je odkaz na jej stránku, hook
+správcu úloh pod rootom a pošle agenta k obalu `bin/tk`. Obal je malý skript, ktorý spustí príkaz správcu úloh pod
+správnym používateľom a s menom agenta v prostredí. Číslo úlohy v texte pre operátora je odkaz na jej stránku, hook
 `reply_guard.mjs` zastaví neprepojenú zmienku a dá hotovú náhradu.
 
 ### Ako to postaviť
 
-1. Vyber správcu úloh s príkazovým riadkom. Ak ho nemáš, začni súborom na úlohu v repe projektu s poľami stav,
-   riešiteľ, dôvod, hotovo a komentáre. Hooky tejto kapitoly pridaj, až keď máš nástroj, ktorý vieš čítať strojom.
+1. Vyber správcu úloh s príkazovým riadkom. Ak ho nemáš, začni súborom na úlohu v repe projektu, napríklad
+   `ulohy/0042.md`. Súbor má hlavičku medzi dvoma riadkami `---` s poľami `id`, `nazov`, `projekt`, `stav`,
+   `riesitel`, `dovod`, `hotovo` a `blokery` (zoznam čísel úloh), pod ňou komentáre, každý riadok s dátumom a menom.
+   Takýto súbor prečíta aj hook aj človek. Hooky tejto kapitoly pridaj, až keď máš nástroj, ktorý vieš čítať strojom.
 2. Ustáľ stavy z tabuľky a povinnosť dôvodu pri blokéri a čakaní. Príkaz vyzerá `tasker block <id> --by <id> --reason
-   "<dôvod>"` a bez dôvodu zlyhá.
+   "<dôvod>"` a bez dôvodu zlyhá. Ak používaš súbory, kontrola repa odmietne `stav: blocked` bez neprázdneho komentára
+   o príčine.
 3. Do pravidiel prostredia napíš, že práca je úloha s projektom, dôvodom a podmienkou hotového.
 4. Do prostredia napíš štvorkrokový postup a použi ho najprv pri jednom projekte.
 5. Zaveď pravidlo, že odpoveď operátora do vlákna sa najprv zapíše do úlohy.
-6. Napíš hook Stop, ktorý zastaví ťah, po ktorom komentovaná úloha agenta ostala v stave `todo`. Stav čítaj z
-   databázy správcu úloh len na čítanie.
+6. Napíš hook Stop, ktorý zastaví ťah, po ktorom komentovaná úloha agenta ostala v stave `todo`. Hook nájde úlohy,
+   kde je riešiteľ agent, stav `todo` a posledný komentár napísal agent po poslednej správe operátora. Stav čítaj z
+   databázy správcu úloh len na čítanie, alebo zo súborov.
 7. Do roly správcu agentov napíš, že otvorená úloha bez práce je jeho chyba, a limit 30 minút pre blokér pridelený
    človeku.
+8. Rozhodni, ako sa úloha dostane k agentovi. Keď niekto pridelí úlohu agentovi alebo pridá komentár, riešiteľ sa musí
+   dozvedieť. Napíš malý most, ktorý sleduje udalosti správcu úloh a zapíše správu do schránky riešiteľa (kapitola 8).
+
+### Čo od runtime vyžaduje
+
+- Správca úloh, ktorý sa dá ovládať z príkazového riadku, aby ho agent použil nástrojom na príkazy. Webové rozhranie
+  nestačí.
+- Stav úloh čitateľný strojom pre hooky. Najlepšie databáza alebo súbory, ktoré hook otvorí len na čítanie.
+- Cesta, ktorou sa riešiteľ dozvie o zmene (kapitola 8), inak úlohy stoja, kým sa agent nepozrie sám.
+- Hook PreToolUse pre nástroje na spustenie sub-agenta, ak chceš ohlasovať prácu sub-agentov. Vstup hooku nesie zadanie
+  sub-agenta, z ktorého hook vytiahne číslo úlohy.
 
 ### Náš príklad
 
-Pravidlá sú v `env/server/CLAUDE.md`, časti "Správca úloh" a "Postup úlohy". Plán schvaľuje zástupca podľa
+Pravidlá sú v `env/server/CLAUDE.md`, častiach "Správca úloh" a "Postup úlohy". Plán schvaľuje zástupca podľa
 `roles/zastupca-operatora.md`. Tok práce a 30 minút pre blokér sú v `roles/spravca-agentov.md`, časť "Čo spravuje a
-tok práce". Hooky sú `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`. Obal je `bin/tk`. Hook `hooks/tasker_root.mjs`, skript
-`bin/uloha-webu.sh` (založí úlohu pre agenta webu spolu s úlohou posudku dizajnéra) a hook `hooks/web_review.mjs` (zamietne
-všetko ostatné) sú viazané na náš správca úloh a v repe nie sú, opisuje ich tabuľka "Čo v repe nie je" v `README.md`. Samotný správca úloh v tomto repe nie je, je to
-samostatný nástroj.
+tok práce". Hooky sú `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`. Obal je `bin/tk`. Hook
+`hooks/tasker_root.mjs`, skript `bin/uloha-webu.sh` (založí úlohu pre agenta webu spolu s úlohou posudku dizajnéra)
+a hook `hooks/web_review.mjs` (zamietne všetko ostatné) sú viazané na náš správca úloh a v repe nie sú, opisuje ich
+tabuľka "Čo v repe nie je" v `README.md`. Samotný správca úloh v tomto repe nie je, je to samostatný nástroj. Most,
+ktorý doručuje udalosti úloh do schránok, je v repe `https://github.com/gavalierm/agent-runtime`, ktoré je zatiaľ
+súkromné a zverejní sa po vyčistení (D0171).
 
 ## 8. Správy medzi agentmi
 
