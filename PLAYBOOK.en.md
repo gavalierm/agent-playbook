@@ -372,3 +372,240 @@ urobí sám a čo čaká na operátora"), "Order from the operator" ("Zadanie od
 "Continuity" ("Kontinuita"). What the operator reserved is in `roles/ROLES.md`. The decision with two paths is in
 `global/CLAUDE.md`, §6, the accepted objection in §1. The line "Waiting for you:" is checked by `hooks/reply_guard.mjs` with
 the variable `AR_ROZHODNUTIA=1`. The scope `schvalene` is in `rozhodnutia/ROZSAHY.md`.
+
+## 4. Decision register
+
+### Problem
+
+A decision spoken in conversation dies with the session. A week later the agent asks again or does the opposite. Notes in
+one big file cannot be checked, and an old decision gets replaced by a new one without fixing the places that still state
+the old one. Agent instructions then claim things that stopped being true long ago.
+
+### When you need it
+
+You need it when an agent repeatedly asks about things you already decided, or when rules change and the old wordings
+remain in personas, memory and documents. You also need it when you want to know about a decision who made it and with
+what power.
+
+You do not need it with one agent and ten rules. One file with bullets in the repo is enough then. Create the register when
+you find two claims in the instructions that contradict each other, or when an agent acts on a decision that no longer
+holds.
+
+### Mechanism
+
+A decision is one file in `rozhodnutia/` (Slovak for "decisions"), named `D0001.md`, `D0002.md` and so on. The header is a
+list of `key: value` fields between two `---` lines, followed by a short body. A file is never deleted, and a change of
+state is a commit. The field names and enum values below are written as they appear in our files.
+
+| field | meaning |
+|---|---|
+| `id` | `D` and four digits, equal to the file name |
+| `nazov` | title, one sentence saying what holds |
+| `stav` | state: `platí` (valid), `nahradené` (replaced) or `zrušené` (cancelled) |
+| `kluc` | key, a dotted path of one subject, for example `odpoved.strop-viet`, unique among valid records |
+| `rozsah` | scope, tags from `rozhodnutia/ROZSAHY.md`, meaning the topics the decision touches |
+| `agenti` | agents, names in lower case, or `*` |
+| `rozhodol`, `moc` | who decided, and with what mandate (operator, deputy, agent manager and so on) |
+| `zapisal`, `datum` | who wrote the record and when |
+| `zdroj` | source, where it was said, for example a thread, a message or a task |
+| `nahradza`, `nahradene` | links between records (replaces, replaced by), both sides point at each other |
+| `subory` | files of the repo that embody the decision, they must exist |
+| `zrusene-tvrdenie` | cancelled claim, a regular expression of a sentence that must not stand anywhere after the change |
+
+The body has at most five sentences. It says what holds, why, and what was rejected. The history is in git.
+
+The key prevents two valid records about one subject. The write script fails when a new record with a valid key does not
+say that it replaces the old one. The power prevents an agent without a mandate from deciding about rules. The table of
+scope and power is in `rozhodnutia/ROZSAHY.md`, and the check enforces it. The file `INDEX.md` is a generated overview of
+all records and is not edited by hand.
+
+Writing goes one way. The script `bin/rozhodni.sh` assigns a number, writes the file, rewrites `INDEX.md`, commits under
+the agent's name and pushes. A hook that rejects every other write into the records runs before the tool is used. It
+catches a write through the file editing tool and a command in the shell, including `sed -i`, redirection and `tee`. The
+option `--dry-run` writes nothing, and the option `--zrus` (cancel) cancels a decision.
+
+Cancelled claims are checked by a machine. When a decision changes something, its field `zrusene-tvrdenie` carries a
+regular expression of the old sentence. A check scans the agent instructions and the memory and fails at every place that
+still states the old sentence. A second check goes through the paths in backticks in the instructions and fails on a path
+to a file that does not exist. A third fails on a memory that claims something waits for the operator without a task
+number, or mentions a decision without a record number.
+
+An agent learns about decisions from three places. A hook at session start inserts the changes since the last start and the
+tasks waiting for the operator. The rules-change hook from chapter 2 inserts a change of a record into the next prompt. And
+the agent lists them itself, with `node lib/rozhodnutia.mjs list --agent <name>`.
+
+A remark in a conversation is not a decision. It is written down only after the operator says yes to the text. While they
+discuss the matter, no record is written.
+
+### How to build it
+
+1. Create `rozhodnutia/` and `rozhodnutia/README.md` with the schema of the fields.
+2. Write `rozhodnutia/ROZSAHY.md` with a table of tags and a table "scope may power". Start with five tags.
+3. Write the write script. It assigns the next number (the highest number in the directory plus one), writes the header and
+   the body from standard input, runs the check and commits. A write never overwrites an existing file.
+4. Write the check. The id equals the file name, the key is unique among valid records, the links `nahradza` and
+   `nahradene` point at each other, the files in `subory` exist, the tag is in the table, the power fits the scope.
+5. Write a list of cancelled claims and a check that looks for them in the instructions and in the memory. The list can be a
+   plain text file where a line is a regular expression, a tab and a reason.
+6. Wire a PreToolUse hook that rejects a write into `rozhodnutia/` outside the script. The hook rejects a write tool whose
+   path leads to a record `rozhodnutia/D0xxx.md`, and a shell command that mentions such a record together with `sed -i`,
+   `tee` or redirection. The rejection carries the line "Correct procedure:" (our files use "Správny postup:", chapter 6).
+7. Wire a SessionStart hook with the changes since the last start and run the check in the pre-commit hook.
+
+A record:
+
+```
+---
+id: D0001
+nazov: Odpoveď operátorovi má najviac šesť viet
+stav: platí
+kluc: odpoved.strop-viet
+rozsah: pravidla
+agenti: *
+rozhodol: <operator name>
+moc: operator
+zapisal: <agent>
+datum: <YYYY-MM-DD>
+zdroj: <thread or task where it was said>
+subory: hooks/reply_guard.mjs
+---
+A reply to the operator has at most six sentences of prose. The reason is that the operator does not read a long reply.
+A cap of twelve sentences was rejected, because agents reached it regularly.
+```
+
+### What it requires from the runtime
+
+- PreToolUse and SessionStart hooks that can add text to the context or reject a tool with a reason (chapter 6).
+- The PreToolUse hook also sees shell commands, not only writes through the file editing tool. If the runtime does not show
+  shell commands to hooks, you will not catch a write through `sed`, and you guard it with a check in the pre-commit hook.
+- Access to git and the ability to push under the agent's name.
+
+### Our example
+
+The schema is in `rozhodnutia/README.md`, the tags in `rozhodnutia/ROZSAHY.md`. Sample records are `rozhodnutia/D0141.md`,
+`rozhodnutia/D0142.md` and `rozhodnutia/D0144.md`, which replaces `rozhodnutia/D0010.md`. Writing is done by
+`bin/rozhodni.sh`, the logic and the check by `lib/rozhodnutia.mjs` with the test `lib/rozhodnutia.test.mjs`. Cancelled
+claims are read by `lib/doc_paths.mjs` from the file `lib/retired_claims.txt`, and the memory is checked by
+`lib/memory_claims.mjs`. The hooks are `hooks/rozhodnutia_guard.mjs` and `hooks/rozhodnutia_context.mjs`. The records D0010,
+D0141, D0142 and D0144, the scripts `lib/doc_paths.mjs` and `lib/memory_claims.mjs`, the list `lib/retired_claims.txt` and
+both `rozhodnutia_*` hooks are not in the repo. The records are private, and the rest is tied to our tasks and memory. What
+they do is in the table "What is not in the repo" in `README.md`.
+
+## 5. The mistake loop
+
+### Problem
+
+An agent makes a mistake, the operator corrects it, the agent says "you are right" and a week later does the same thing. A
+fix written only into memory or into the conversation does not survive. A fix that does not change the file that governs
+behaviour is not a fix. And a request for more caution does not block the mistake.
+
+When nobody records mistakes, you cannot see which ones repeat. A repeated mistake is a signal that a rule or a check is
+missing, and without a record you will not catch it.
+
+### When you need it
+
+You need it when the same mistake returns a second time, even though the agent acknowledged it once. You also need it when
+you trust the agent's word and later find that it claimed what it did not verify.
+
+You do not need it while the agent does one-off tasks and mistakes have no consequence. Even then the first step of the
+chapter helps, meaning the definition of a mistake in the rules. Add the script, the register and the hook only when you
+have the first repeated mistake.
+
+### Mechanism
+
+The loop has five steps. The operator objects. The agent verifies the objection and accepts it. It fixes the file that
+governs the behaviour and commits. It records the mistake in the register with a script. It introduces a check that blocks
+the mistake, at the latest at the second occurrence of the class. The class of a mistake is a short key for one cause, for
+example `neoverene-tvrdenie` (unverified claim). The same cause is the same class even in another concrete case.
+
+These count as a mistake: a false claim, a step that was not the agent's, a needless action by the operator, an accepted
+objection, a fix asked for twice, or damage to a live system. Every mistake of an agent is a process mistake. The agent
+finds the tool, rule or check that let it through and fixes them before it declares the mistake handled.
+
+The fix belongs in the file that governs the behaviour, meaning the persona, a rule, a skill, a hook or a check. A memory
+entry is not a fix. A rule is written as the target behaviour with a check that can be ticked off, and for a ban with a
+forbidden sentence. The persona carries a short line about the incident. Names from the incident belong in a decision
+record, not in a role rule.
+
+The strongest fix is a check that fails on the mistake. It is a test, a hook or a script. Before declaring the fix, the
+mistake is replayed and the check is shown failing. A replay never touches a live system, and it first verifies that it
+cannot fall back to a live path, mailbox or service. After a change of a value, option or path, the agent finds the old
+value with `grep -rn` and fixes every hit, also in documents and comments.
+
+The mechanical part is done by `bin/chyba.sh`. It takes the class of the mistake and the file that governs the behaviour,
+and does four things.
+
+1. It rejects a file that is not committed, so the report carries the number of the fixing commit.
+2. It writes a line into the register (date, agent, class, file, commit, description, task number).
+3. At the second occurrence of the same class for the same agent, it creates in the task manager a task for a check that
+   blocks the mistake.
+4. It prints a report in four sentences. What I claimed or did, what was true, which file and commit changed, what stops it
+   next time.
+
+The agent puts the report into its next reply to the operator, even if not asked.
+
+A hook that runs before the end of a reply (Stop) enforces the loop. It reads the last reply and the commands of the turn.
+When the reply acknowledges a mistake (phrases like "you are right" or "my mistake") and `chyba.sh` did not run in the
+turn, it stops the reply. It also stops it when the turn lacks a commit of the file that governs the agent, or when the
+reply does not carry a commit number. On the second stop in a row it stays silent, so it does not loop.
+
+The agent manager also follows a six-step improvement procedure.
+
+1. Find the file and line that was missing or lying.
+2. Name one cause in the system.
+3. Write a fix with a check.
+4. Deploy it.
+5. Replay the scenario in which the problem arose.
+6. Record the decision.
+
+A fix of the type "I wrote it into a skill" is not approved.
+
+### How to build it
+
+1. In the global rules write a section on mistakes. Define a mistake, say that it is a process mistake, that the fix goes
+   into a file that governs behaviour and that the check must fail on the mistake.
+2. In the persona add a section "Own mistake" ("Vlastná chyba") that refers to the global rule and carries short lines about
+   incidents.
+3. Write `bin/chyba.sh` with the options `--trieda` (class), `--subor` (file), `--popis` (description), `--pravda` (what was
+   true), `--kontrola` (check). The register is a file with tabs outside the repo, for example
+   `~/.local/state/<name>/chyby.tsv`. The script finds the commit with `git log -1 --format=%h -- <file>` and rejects a file
+   with unsaved changes (`git status --porcelain -- <file>` is not empty).
+4. Write a skill `chyba` that says when to run the script and in what order. A skill is a file `SKILL.md` with a description
+   by which the agent selects it.
+5. Write a Stop hook that stops a reply that acknowledges a mistake without a commit and without the script. The hook does
+   this.
+   1. It takes `transcript_path` and `stop_hook_active` from the JSON on input. If `stop_hook_active` is true, it exits
+      without output.
+   2. It reads the transcript (one JSON per line) and finds the last message of the operator, meaning a `user` record that
+      carries text.
+   3. From the `assistant` records after it, it collects the reply texts and the commands of the Bash tool.
+   4. If the text contains a phrase from the regular expression of acknowledgement and `chyba.sh` is not among the
+      commands, it prints `{"decision":"block","reason":"<reason> Correct procedure: <step>"}`.
+6. Write a hook test with a conversation transcript from a real mistake. The test must fail when you turn the hook off.
+7. Give the task for the check at the second occurrence to the agent that manages the rules (chapter 7).
+
+Running it:
+
+```
+bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
+  --popis "I claimed a state without checking" --pravda "the state was different" \
+  --kontrola "the hook rejects a reply without proof"
+```
+
+### What it requires from the runtime
+
+- A hook that runs before the end of a reply and can stop the reply with a reason that the agent gets back.
+- Access of the hook to the session transcript, so it sees the reply text and the commands of the turn. In Claude Code it is
+  the path in the field `transcript_path`.
+- A flag that the hook already stopped once (`stop_hook_active`), so the loop does not repeat forever.
+- For the automatic creation of a task for the check, a task manager with a command line (chapter 7). Without it the script
+  does not create the task and says so.
+
+### Our example
+
+The mistake rules are in `global/CLAUDE.md`, §4, the accepted objection in §1. The script is `bin/chyba.sh`, the skill
+`skills/chyba/SKILL.md`, the hook `hooks/objection_fix.mjs`, the tests `lib/chyba.test.mjs` and
+`hooks/objection_fix.test.mjs`. The decision on the loop is `rozhodnutia/D0142.md`, a private record that is not in the repo
+(its content is in the table "What is not in the repo" in `README.md`). The improvement procedure is in
+`roles/spravca-agentov.md`, part "Improving agents" ("Zlepšovanie agentov"). The section "Own mistake" is shown by
+`PERSONA.md` in the agent manager's repo.
