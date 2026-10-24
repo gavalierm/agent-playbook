@@ -172,3 +172,203 @@ The start and end rules are in `env/server/CLAUDE.md`, part "Git on the server" 
 unfinished work is in `global/CLAUDE.md`, §6. That the persona has no runtime tool names is stated in
 `roles/spravca-agentov.md`, part "Persona of agents" (Slovak: "Persona agentov"). The pre-commit hook is
 `.githooks/pre-commit`. A sample persona is in the file `PERSONA.md` of the agent manager's repo.
+
+## 2. Layers of rules
+
+### Problem
+
+Rules written in one place grow. A rule that every agent needs gets copied into five personas, and the fifth wording then
+differs from the first. A rule about a role, written with an agent's name, stops being valid when the agent is renamed or
+another agent takes over the role. On top of that, an agent does not know which of two rules is stronger.
+
+A third problem appears when a rule changes. A session that is already running does not see the new wording. The agent
+keeps following the old rule until someone restarts it.
+
+### When you need it
+
+You need it when a rule should apply to more than one agent or more than one project. You also need it with a single
+agent, if it works on several machines and each has a slightly different environment.
+
+You do not need it with one agent on one machine. One instruction file and a persona are enough. Add layers when you write
+the same rule for a second agent for the first time. Add roles only when you have work that the first agent should not do.
+
+### Mechanism
+
+Rules have five layers, from the widest to the narrowest. A narrower layer takes precedence over a wider one.
+
+| layer | file | applies to |
+|---|---|---|
+| global | `global/CLAUDE.md` | every agent everywhere |
+| environment | `env/<environment>/CLAUDE.md` | every agent on this machine |
+| role | `roles/<slug>.md` | an agent whose persona lists the role |
+| persona | `PERSONA.md` in the agent's repo | one agent |
+| project | `CLAUDE.md` of the project | work in the project, takes precedence |
+
+Loading is hard, not voluntary. Claude Code loads the file `CLAUDE.md` from the user's home directory
+(`~/.claude/CLAUDE.md`) and from every parent of the working directory. So you place the global file as a symbolic link
+at `~/.claude/CLAUDE.md`, and the environment file as a symbolic link at the root of the tree under which the agents run.
+The persona loads by the import `@PERSONA.md` from the runtime file. A hook inserts the roles at session start.
+
+The identity hook runs at session start. It reads the line `Role: <slug>, <slug>` from `PERSONA.md` and inserts the files
+`roles/<slug>.md` into the context. An agent whose persona lists no role does not get its rules. An unknown slug gives a
+warning in the context, and the hook does not crash. The same hook also announces the identity, meaning the name from the
+persona heading and the shortened session id.
+
+A change of rules reaches the agent in the middle of a session too. On every prompt, a hook compares the commit the
+deployed rules clone is on with the commit this session saw last. If they differ, it inserts into the context a list of
+commits and a diff of the files in `global/` and `env/<environment>/`. The state of the last seen version is kept in one
+file per session, so sessions do not affect each other. The first prompt of a session only writes the commit, because the
+files were loaded fresh at start. So a change applies at most five minutes after the push and without a restart, if the
+deployed clone updates itself every five minutes.
+
+A role rule and an agent's name each have a single place. You write a rule for a role or a group of agents. A single file
+that maps roles to names says who holds a role. Renaming an agent is a change of one line and of the repo name, and the
+rules do not change. A name belongs only in an example or in a description of a state with a date. A role is a mandate and
+a responsibility, not system privileges.
+
+A rule belongs at the level of its reach. If another agent needs it too, or another agent holds a copy, it belongs in the
+global rules, the environment or a role. Two checks enforce this. The first looks for duplicates, meaning bullets in
+personas that say the same as bullets in the shared files. The second is a hook that, on the first write of new text into
+an agent's rules, rejects the write with the question whether another agent does the same thing. The identical second
+write passes, so the hook only forces a pause.
+
+The global rules have a word cap that may only go down. Shorter rules are followed better, and every word costs tokens on
+every model call.
+
+### How to build it
+
+1. Write `global/CLAUDE.md`. Start short (chapter 12) and keep it under a cap that you set. The cap is a number in a file,
+   for example `1500`, and a check counts the words of the file and fails when there are more than the number. The number
+   may only go down, so the check also compares with the state in the previous commit.
+2. Link it. In Claude Code it is `ln -s <rules clone>/global/CLAUDE.md ~/.claude/CLAUDE.md`. The line in the persona looks
+   like `Role: zastupca-operatora, spravca-agentov`.
+3. Write `env/<environment>/CLAUDE.md` for things typical of the machine and link it to the root of the agent tree, for
+   example `ln -s <rules clone>/env/server/CLAUDE.md /home/agents/CLAUDE.md`.
+4. With several roles, write `roles/ROLES.md` as an index and `roles/<slug>.md` for each one. Put the mapping of roles to
+   names in one file, for example `roles/agents.md`, and write names nowhere else.
+5. Write a SessionStart hook that reads the `Role:` line and prints the role files to standard output. At SessionStart the
+   output of the hook is added to the context.
+6. Write a UserPromptSubmit hook with the clone diff. The hook does this.
+   1. Take `session_id` from the JSON on input.
+   2. Find `git rev-parse HEAD` of the deployed clone.
+   3. Read the state file for this session. If it does not exist, write HEAD and exit without output.
+   4. If HEAD matches, exit. Otherwise write it and print `git log --format='%h %s' <old>..<new> -- global/ env/<environment>/`
+      and `git diff <old>..<new> -- global/ env/<environment>/`, at most 20 kB.
+7. Make sure the rules clone updates itself. A timer (cron or systemd) that runs `git fetch origin && git merge --ff-only origin/main`
+   every five minutes is enough.
+8. Write a deployment script that sets up the links, hooks and timer in a repeatable way.
+9. Add a duplicate test to the repo check. Split the rules into units (a bullet or a paragraph), strip diacritics,
+   punctuation and short words, cut words to five characters and report a pair of units where at least three quarters of
+   the smaller one match.
+
+### What it requires from the runtime
+
+- It loads instructions from the user's home directory and from all parents of the working directory, or gives you another
+  way to insert a global file into every session.
+- It supports hooks at session start and on every prompt, whose output is added to the context.
+- It gives the hook an input with the session id and the working directory. The hook stores state by the session id.
+- It imports a file from a file (`@PERSONA.md`), or adds personas in another way.
+
+### Our example
+
+The table of layers is in `README.md`. The role index is `roles/ROLES.md`, and the role rules are
+`roles/zastupca-operatora.md`, `roles/spravca-agentov.md`, `roles/pracovny-agent.md` and `roles/dizajner.md`. The hooks are
+`hooks/identity.mjs`, `hooks/rules_delta.mjs` and `hooks/own_rule_scope.mjs`. Deployment is done by
+`env/server/install.sh`, duplicates are found by `lib/rule_dupes.mjs`, and the word cap is held by
+`lib/global_word_cap.txt`. The rule "an instruction against a rule" is the record `rozhodnutia/D0144.md`. These four files
+are not in the repo, they are tied to our runtime or private. What they do is in the table "What is not in the repo"
+in `README.md`.
+
+## 3. The operator and the deputy
+
+### Problem
+
+The operator has little time. An agent that asks about everything delays them. An agent that asks about nothing does even
+what the operator reserved. Asking about things the agent can settle itself is also a hidden mistake, because it passes as
+caution.
+
+When there are several agents and each asks the operator on its own, the operator becomes a postman between them, and
+nobody knows what is currently waiting for what. Questions get lost in conversations.
+
+### When you need it
+
+You need it when agents work for a long time without supervision and the operator has no time to approve every step. You
+need it when the operator reserved something (payments, new services, steps that cannot be undone) and the agent must know
+it before it touches production.
+
+You do not need it when you work with one agent and sit next to it. Then you decide, and the agent asks in the
+conversation. With three or more agents and no deputy, you end up as a secretary who moves questions around.
+
+### Mechanism
+
+The operator's deputy is an agent with a mandate to decide for the operator where the operator does not decide alone, within
+limits the operator approved. The mandate is written in the role file. The deputy's order carries the mark
+"[<name> for <operator>]", and other agents treat it as an order of the operator. There is one deputy on each machine of
+the operator. Deputies are equals and pass state to each other by messages (chapter 8), not by shared memory.
+
+The operator reserved a new tool, service or procedure, a step that cannot be undone, hiring and dismissing an agent, a
+change of a persona and the limits of power. Only the operator does payments and contracts. Secrets stay in files with mode
+`600`. The deputy settles everything else alone and records a technical choice in the decision register (chapter 4). It
+brings the operator only decisions that belong to the operator, and warnings.
+
+Questions for the operator have a fixed place. A message from the deputy, while something waits, ends with the line
+"Waiting for you:" (our files use the Slovak "Čaká na teba:") and a list of items with the mark (decision), (value) or
+(your account). A decision is a choice between paths, a value is a datum that the agent does not have and cannot get, and
+your account is a step that can be done only in the operator's account. Before each item the deputy answers one question.
+Can I do it myself, or arrange a means to do it? If yes, the item does not belong on the line. For example, creating a repo
+or adding a key through an API is forbidden to hand over if the deputy has a token or can ask for one.
+
+A decision for the operator is only a choice between at least two paths that each reach the approved goal. If only one
+path leads there, it is a requirement, and the agent does it and records it. Before marking an item as a decision, the
+agent writes down the second path.
+
+Actions can be approved in advance by class. The deputy asks once "May I do X? yes/no". After "yes" it records the class of
+action in the decision register with the scope `schvalene` (approved) and no longer asks. After "no" the action goes to
+"Waiting for you:".
+
+The deputy does not carry out an order from the operator that changes something right away. It verifies the assumptions,
+finds the impacts, brings a plan (goal, steps, impacts, risks, recommendation) and records the order and the plan in a
+task. It carries them out after consent. Three sentences are enough for a small change. The deputy approves a task plan in
+the task manager (chapter 7) alone, with a comment, if nothing in it is reserved for the operator.
+
+An objection from the operator that the agent accepts after checking is consent to the change. The agent carries it out in
+the same turn, even if it needs a new tool. It asks again only for a step that cannot be undone, or a step beyond the
+objection. The sentence "I will do it once you approve" is forbidden. An order against a written rule does not change the
+rule by itself. The agent names the rule by file and line, and the operator confirms the rule or the change.
+
+The deputy does not wait for an outside system (a domain registry, DNS propagation, a service reply) with the model, because
+every check with the model costs a call with the whole context. It hands the wait to a script without a model, with a
+command for the check, a step after it is met and a done condition.
+
+### How to build it
+
+1. In `roles/zastupca-operatora.md` write a list of what the operator reserved. What is not there, the deputy does alone.
+   Start with five reserved things and add more from mistakes.
+2. Write the rule "Waiting for you:" with three marks and a check question. An item looks like `- Approve the domain for the
+   new site (decision)`.
+3. Write the procedure for an order from the operator in the sequence verify, impacts, plan, record, carry out after
+   consent.
+4. In the global rules write the deputy's mark, the rule "an accepted objection is consent" and the rule of a decision with
+   two paths.
+5. In the decision register introduce the scope `schvalene` for classes of actions approved in advance (chapter 4).
+6. Optionally write a Stop hook that reads the agent's last reply. If it contains the line "Waiting for you:", every item
+   below it must end with the mark (decision), (value) or (your account), otherwise the hook stops the reply and prints the
+   missing mark.
+7. Write the wait script as a small loop without a model. Every few minutes it runs a check command, for example `dig +short
+   example.org`. When the command returns the expected result, it writes a message to the agent's mailbox (chapter 8) or a
+   comment to the task (chapter 7) and ends. After the given time it writes an expiry message.
+
+### What it requires from the runtime
+
+- You can start in it an agent whose persona lists a role (chapter 2), so that the deputy's mandate loads at start.
+- The Stop hook gets the last reply (in Claude Code through the session transcript, whose path the hook gets in its input).
+- The wait script can wake the agent. That is either a message in a mailbox with a waker (chapter 8), or a comment in the
+  task manager that wakes the assignee (chapter 7).
+
+### Our example
+
+The role is described in `roles/zastupca-operatora.md`, parts "What it does alone and what waits for the operator" ("Čo
+urobí sám a čo čaká na operátora"), "Order from the operator" ("Zadanie od operátora"), "Limits" ("Hranice") and
+"Continuity" ("Kontinuita"). What the operator reserved is in `roles/ROLES.md`. The decision with two paths is in
+`global/CLAUDE.md`, §6, the accepted objection in §1. The line "Waiting for you:" is checked by `hooks/reply_guard.mjs` with
+the variable `AR_ROZHODNUTIA=1`. The scope `schvalene` is in `rozhodnutia/ROZSAHY.md`.
