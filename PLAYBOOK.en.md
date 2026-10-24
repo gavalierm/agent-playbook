@@ -1299,3 +1299,169 @@ context. It is not in the repo, you write your own. The reply cap is held by `ho
 `env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). Approved patterns of repeated work are in
 `artifacts/`, and their use is described by `skills/artefakty/SKILL.md`. Neither is in the repo, they are our working
 outputs.
+
+## 11. Clean context and continuity
+
+### Problem
+
+The context of a session grows, and every model call reads all of it. A long session is expensive, and the model makes more
+mistakes in it. Clearing the context in turn erases everything the agent knew. If the state is not written down, the agent
+works blind after clearing, or asks the operator about what was already done.
+
+### When you need it
+
+You need it when sessions run for hours and days, when you pay for every reading of the context, and when you see that the
+agent forgets the assignment after long work. You also need it when you want the agent to continue after clearing without the
+operator.
+
+You do not need it for short sessions that end on their own. Writing the state to memory and git (the first part of the
+chapter) you need always. Add automatic clearing on the agent's command (part "Automatic clearing") only when the first manual
+clearing tires you. Until then it is enough that the operator types `/clear` themselves.
+
+### Mechanism
+
+The state of work is in files, not in the context. The memory is in git. The state of a topic is a task with comments and
+history in the task manager, not a file in git. Only the persona, rules, decisions and code go into git. Unfinished work at
+the end of a turn goes into memory, is committed and pushed. The sentence "I will bring it in the next session" is forbidden.
+
+A clean context is a new session without a conversation, which the agent starts from what is in files. It is done after a
+finished logical unit of work, not in the middle of a task. The procedure has four steps.
+
+1. The agent writes the state into memory and into the task.
+2. It commits and pushes.
+3. It ends the reply with a line that the program watching sessions knows. The handover script prints the line.
+4. The program sends the command `/clear` to the same thread, and no model is called. Clearing does not cost a model turn.
+
+The handover is a small file in which the agent passes the new session a summary of the state and possibly the next step. The
+handover script prints the line `HOTOVO-KONTEXT <mode> <key>` (HOTOVO-KONTEXT means "context done"). The mode `spanok`
+("sleep") only clears the context. The mode `pokracuj` ("continue") sends the agent one more message with the next step after
+clearing, and is used only when the next step waits for nobody. The key is a random string that ties the line to the
+handover, so a quotation of the word in ordinary text starts nothing.
+
+After clearing no model is called. The session start (fetch, rebase, state) is done by a hook. The hook reads the handover,
+deletes it and inserts it into the new session as text, so the model does not read the memory or run fetch until the work
+needs it.
+
+The script refuses clearing (code 1) when the agent's task is waiting and the agent commented on it after it entered the
+waiting. The agent first changes the state of the task (closes it, resumes it, or sets waiting with a new reason) and only
+then starts clearing. Otherwise the result the task was waiting for would stay unprocessed.
+
+The context limit is guarded by a hook that runs on every prompt. It adds up the input tokens of the model's last reply and,
+above the limit of 80 thousand tokens, adds an instruction for a clean context to the context. Below the limit it stays
+silent.
+
+An agent that runs in two places (the main thread and the task runs in another clone) shares memory, manuals and skills
+through git, so after changing them commit and push go right away. Waiting for an outside state is done by a script that
+wakes the agent only at a change, not by repeated checks with the model.
+
+### How to build it
+
+#### Writing the state (always)
+
+1. In the persona write a section "Continuity" with the rule for start (fetch, rebase, commits of the other agents) and for
+   the end (state into memory, commit, push).
+2. In the rules write that clearing goes after a logical unit and not in the middle of a task.
+
+#### Context limit
+
+3. Write a UserPromptSubmit hook. The session transcript is a file whose path the hook gets in its input (`transcript_path`),
+   one JSON per line. The hook goes through the lines with the field `usage`, takes `input_tokens`,
+   `cache_read_input_tokens` and `cache_creation_input_tokens` from the last one and adds them up. Below 80 000 it stays
+   silent. Above the limit it prints an instruction to clear. The instruction says when to clear (after a finished unit, not
+   in the middle of a task) and which line to write.
+
+#### Manual clearing (the simplest form)
+
+4. Write the handover script. Usage `kontext.sh spanok|pokracuj [--dalej "<step>"] [--stav "<summary>"]`. It writes the file
+   `<state directory>/<session id>.json` with mode `600` (first to a hidden file, then `mv`) with the fields `key` (eight
+   random bytes in hexadecimal), `rezim` (mode), `dalej` (next), `stav` (state), `cwd` and `at`. It prints the line
+   `HOTOVO-KONTEXT <mode> <key>`. It refuses clearing when the agent's task is waiting.
+5. Write a SessionStart hook that runs when `source` in the input is `clear`. The hook does this.
+   1. In `cwd` it runs `git fetch origin` and, with a clean tree, `git rebase origin/main`. Never `git pull` or `git stash`.
+      It reports an error in the text and does not stop the session.
+   2. It reads the handover by the session id and deletes it.
+   3. It prints the state, the next step and the result of fetch and rebase, so they are inserted into the new session.
+6. The operator types `/clear` after the agent prints the line. So they get the new session with the handover.
+
+#### Automatic clearing
+
+7. Write a program that watches the agents' sessions. When a session finishes a reply, it reads its last non-empty line. The
+   line is an instruction only when it is exactly the word `HOTOVO-KONTEXT`, optionally with the mode `spanok` or `pokracuj`
+   and with a key of 8 to 64 hexadecimal characters. A quotation of the word elsewhere in the text starts nothing.
+8. In the mode `pokracuj` the program verifies that an unused handover with this key exists. If not, it behaves as `spanok`
+   and reports a warning.
+9. The program checks that the session is not working and sends it the command `/clear`. Right before sending it checks the
+   state once more, because a new run may have started in the meantime. In `pokracuj` it sends, after clearing, a single
+   message with the next step and marks the handover as used.
+10. Store the program's state in a file, so a crash between `/clear` and the continuation does not stay unfinished. Messages
+    have a command identifier, so a repeat after a crash does not create a second clearing (chapter 8).
+
+### What it requires from the runtime
+
+- A way to send `/clear` to a session from a program. We send it through the T3 Code server, which starts the agents and
+  hands the command to their session. We have not tried another way. If your runtime has none, manual clearing remains.
+- A way to find out that a session is not working (chapter 8, part "What your runtime must be able to do").
+- A hook at session start that can say the start is after clearing (in Claude Code the field `source` with the value `clear`).
+- A hook on prompt that sees the session transcript and the token count of the last reply.
+- Clearing that really discards the old conversation. After the first clearing, test it by asking the agent about a fact from
+  the previous conversation that was not written to memory. If it knows it, clearing does not work as it should.
+
+For us clearing did not work. T3 Code keeps the session id from the first start for a thread and starts every further process
+with `--resume` on it. `/clear` does not change that id, and the old context came back. So when `source` is `clear`, the hook
+`clear_bridge.mjs` finds the original id in the command of the parent process, moves the old transcript aside as a backup and
+puts a symbolic link to the transcript of the new session in its place. The next `--resume` then loads a clean context. It may
+behave differently for you, hence the test above.
+
+### Our example
+
+The clean context rules are in `env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). The script is
+`bin/kontext.sh`, its logic `lib/kontext.mjs`. The hooks are `hooks/context_warning.mjs` and `hooks/clear_bridge.mjs`. The
+files `bin/kontext.sh`, `lib/kontext.mjs`, `hooks/clear_bridge.mjs` and the waker are tied to our runtime and are not in this
+repo. The same goes for `hooks/context_warning.mjs`, which calls `bin/kontext.sh`. What each does is in the table "What is not
+in the repo" in `README.md`. The waker, the watcher of the other threads and clearing on the agent's word are in the repo
+`https://github.com/gavalierm/agent-runtime`, which is still private and will be published after cleanup (D0171). The rule on
+unfinished work is in `global/CLAUDE.md`, §6. The parts "Continuity" ("Kontinuita") and "Concurrency" ("Súbežnosť") are shown
+by `PERSONA.md` in the agent manager's repo.
+
+## 12. How to start on your own
+
+### Order for the first week
+
+Do not build everything at once. Each step has its own value, and the next one stands on it.
+
+1. Day one, one agent. Create the repo, `PERSONA.md`, the runtime file with the import and `memory/MEMORY.md`. Write the rule
+   for the start and the end of a session. Done when a new session after a clean context knows who it is and what was done
+   yesterday.
+2. Day two, global rules. Write `global/CLAUDE.md` on objectivity, replies, durability, mistakes and autonomy and link it to
+   `~/.claude/CLAUDE.md`. Start with a few bullets, not six sections, and build them from the mistakes the agent already made
+   for you. Done when the agent follows the rule in a new session.
+3. Day three, the decision register. Create `rozhodnutia/`, the schema, the write script and the check. Record the first three
+   decisions you already told the agent once. Done when the agent does not ask about them.
+4. Day four, the mistake loop. Write the section on mistakes, `chyba.sh`, a hook that stops an acknowledged mistake without a
+   record, and a test. Done when the hook stops a test reply "you are right" without a commit.
+5. Day five, hooks with a correct procedure. Introduce the `deny` helper and hooks for two mistakes that repeated for you.
+   Done when every rejection carries the line "Correct procedure:".
+6. Second week, the task manager and the procedure plan, build, check. Only when the agent does several things at once.
+7. Second to third week, roles and a second agent. Only when there is work that the first agent should not do.
+8. Then mailboxes and the waker (chapter 8). Only when two agents need to send each other results.
+9. Last, automatic context clearing (chapter 11, part "Automatic clearing"). You have manual clearing with state written to
+   memory from the first day.
+
+### What to postpone
+
+- Mailboxes and the waker, until you have at least two agents. One agent with tasks in a task manager is enough.
+- More than two roles, until you have work that belongs to none of them.
+- Further roles (designer, development lead, personal assistant) and artifacts, until there is work for them.
+
+### Before your own mechanism
+
+Before every new mechanism, find out whether the tool already does it. The tool you use has documentation, and it handles some
+things on its own (wiring hooks, file imports, permission management). A custom installer, a fixed path to the home directory
+and a custom shell script are signs that you did not read the documentation. Quote the rules and limits of an outside service
+only from its official page, read in full.
+
+The reasons in this playbook come from practice on one server with one operator. The waker, the task manager wrapper and the
+hook `clear_bridge.mjs` are tied to our runtime. Chapters 7, 8 and 11 describe how they are built so that you can build them
+without our code. Our code is in the repo `https://github.com/gavalierm/agent-runtime`, which is still private and will be
+published after cleanup (D0171). The rest is portable at once, that is the persona in git, the decision register, the mistake
+loop, hooks with a correct procedure and a task with states.
