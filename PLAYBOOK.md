@@ -270,50 +270,80 @@ Operátor má málo času. Agent, ktorý sa ho pýta na všetko, ho zdržuje. Ag
 operátor vyhradil. Pýtanie sa na veci, ktoré agent vie zariadiť sám, je navyše skrytá chyba, lebo sa tvári ako
 opatrnosť.
 
+Keď sú agenti viacerí a každý sa pýta operátora sám, operátor sa stane poštárom medzi nimi a nikto nevie, na čo
+práve čaká. Otázky sa strácajú v rozhovoroch.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď agenti pracujú dlhšie bez dozoru a operátor nemá čas schvaľovať každý krok. Potrebuješ to, keď
+si operátor niečo vyhradil (platby, nové služby, kroky, ktoré sa nedajú vrátiť) a agent to musí poznať skôr, než sa
+dotkne produkcie.
+
+Nepotrebuješ to, keď pracuješ s jedným agentom a sedíš pri ňom. Vtedy rozhoduješ ty a agent sa pýta v rozhovore.
+Pri troch a viac agentoch bez zástupcu skončíš ako sekretár, ktorý presúva otázky.
+
 ### Mechanizmus
 
 Zástupca operátora je agent s mandátom rozhodovať za operátora, kde operátor nerozhoduje sám, v medziach, ktoré
-operátor schválil. Jeho pokyn nesie značku "[<meno> za <operátor>]" a ostatní agenti ho berú ako pokyn operátora.
-Zástupca je na každom stroji operátora jeden. Zástupcovia sú si rovní a stav si odovzdávajú schránkami, nie spoločnou
-pamäťou.
+operátor schválil. Mandát je napísaný v súbore roly. Jeho pokyn nesie značku "[<meno> za <operátor>]" a ostatní agenti
+ho berú ako pokyn operátora. Zástupca je na každom stroji operátora jeden. Zástupcovia sú si rovní a stav si
+odovzdávajú správami (kapitola 8), nie spoločnou pamäťou.
 
 Operátor si vyhradil nový nástroj, službu alebo postup, krok, ktorý sa nedá vrátiť, prijatie a prepustenie agenta,
 zmenu persony a hraníc moci. Platby a zmluvy robí len on. Tajomstvá ostávajú v súboroch s právami `600`. Všetko
-ostatné zástupca rieši sám, technickú voľbu zapíše do registra rozhodnutí. Operátorovi nosí len rozhodnutia, ktoré
-patria jemu, a výstrahy.
+ostatné zástupca rieši sám, technickú voľbu zapíše do registra rozhodnutí (kapitola 4). Operátorovi nosí len
+rozhodnutia, ktoré patria jemu, a výstrahy.
 
 Otázky pre operátora majú pevné miesto. Správa zástupcu, kým niečo čaká, končí riadkom "Čaká na teba:" a zoznamom
-položiek so značkou (rozhodnutie), (hodnota) alebo (tvoj účet). Pred každou položkou zástupca odpovie na jednu otázku.
-Viem to urobiť sám, alebo si na to zariadiť prostriedok? Ak áno, položka do riadku nepatrí. Zakázané je napríklad
-založenie repa alebo pridanie kľúča cez API, ak má zástupca token alebo si ho vie vypýtať.
+položiek so značkou (rozhodnutie), (hodnota) alebo (tvoj účet). Rozhodnutie je voľba medzi cestami, hodnota údaj,
+ktorý agent nemá a nevie získať, a tvoj účet krok, ktorý sa dá urobiť len v operátorovom účte. Pred každou položkou
+zástupca odpovie na jednu otázku. Viem to urobiť sám, alebo si na to zariadiť prostriedok? Ak áno, položka do riadku
+nepatrí. Zakázané je napríklad založenie repa alebo pridanie kľúča cez API, ak má zástupca token alebo si ho vie
+vypýtať.
 
 Rozhodnutie pre operátora je len voľba medzi aspoň dvoma cestami, ktoré obe vedú k schválenému cieľu. Ak vedie len
 jedna, je to požiadavka, a tú agent urobí a zapíše. Pred označením položky ako rozhodnutia agent napíše druhú cestu.
 
 Úkony sa dajú schváliť vopred po triedach. Zástupca sa raz spýta "Môžem urobiť X? áno/nie". Po "áno" zapíše triedu
-úkonu do registra s rozsahom `schvalene` a už sa nepýta. Po "nie" ide úkon do "Čaká na teba:".
+úkonu do registra rozhodnutí s rozsahom `schvalene` a už sa nepýta. Po "nie" ide úkon do "Čaká na teba:".
 
 Zadanie od operátora, ktoré niečo mení, zástupca nevykoná hneď. Overí predpoklady, zistí dopady, prinesie plán (cieľ,
 kroky, dopady, riziká, odporúčanie) a zadanie aj plán zapíše do úlohy. Vykoná ich po súhlase. Malej zmene stačia tri
-vety. Plán úlohy v správcovi úloh schváli zástupca sám komentárom, ak v ňom nie je nič vyhradené operátorovi.
+vety. Plán úlohy v správcovi úloh (kapitola 7) schváli zástupca sám komentárom, ak v ňom nie je nič vyhradené
+operátorovi.
 
 Námietka operátora, ktorú agent po overení prijme, je súhlas so zmenou. Agent ju vykoná v tom istom ťahu, aj keď si
 žiada nový nástroj. Pýta sa znova len pri kroku, ktorý sa nedá vrátiť, alebo pri kroku nad rámec námietky. Zakázaná
 veta je "urobím to, keď to schválite". Pokyn proti písanému pravidlu pravidlo sám nemení. Agent pomenuje pravidlo
 súborom a riadkom a operátor potvrdí pravidlo alebo zmenu.
 
-Čakanie na vonkajší systém (register domén, šírenie DNS, odpoveď služby) nerobí zástupca modelom. Zadá ho skriptu bez
-modelu s príkazom na kontrolu, krokom po splnení a podmienkou hotového.
+Čakanie na vonkajší systém (register domén, šírenie DNS, odpoveď služby) nerobí zástupca modelom, lebo každá kontrola
+modelom stojí volanie s celým kontextom. Zadá ho skriptu bez modelu s príkazom na kontrolu, krokom po splnení
+a podmienkou hotového.
 
 ### Ako to postaviť
 
 1. Do `roles/zastupca-operatora.md` napíš zoznam toho, čo si operátor vyhradil. Čo tam nie je, zástupca robí sám.
+   Začni piatimi vyhradenými vecami a dopĺňaj ich z chýb.
 2. Zapíš pravidlo "Čaká na teba:" s tromi značkami a kontrolnou otázkou. Položka vyzerá `- Schváľ doménu pre nový web
    (rozhodnutie)`.
-3. Zapíš postup pre zadanie od operátora (overiť, dopady, plán, zápis, vykonanie po súhlase).
+3. Zapíš postup pre zadanie od operátora v poradí overiť, dopady, plán, zápis, vykonanie po súhlase.
 4. Do globálnych pravidiel napíš značku zástupcu, pravidlo "prijatá námietka je súhlas" a pravidlo rozhodnutia s dvoma
    cestami.
 5. Zaveď v registri rozhodnutí rozsah `schvalene` pre vopred schválené triedy úkonov (kapitola 4).
+6. Voliteľne napíš hook Stop, ktorý prečíta poslednú odpoveď agenta. Ak obsahuje riadok "Čaká na teba:", každá
+   položka pod ním musí končiť značkou (rozhodnutie), (hodnota) alebo (tvoj účet), inak hook odpoveď zastaví a vypíše
+   chýbajúcu značku.
+7. Skript na čakanie napíš ako malú slučku bez modelu. Každých pár minút spustí príkaz na kontrolu, napríklad `dig +short
+   example.org`. Keď príkaz vráti očakávaný výsledok, zapíše správu agentovi do schránky (kapitola 8) alebo komentár
+   do úlohy (kapitola 7) a skončí. Po zadanom čase zapíše správu o vypršaní.
+
+### Čo od runtime vyžaduje
+
+- Dá sa v ňom spustiť agent, ktorého persona uvádza rolu (kapitola 2), aby sa mandát zástupcu načítal pri štarte.
+- Hook Stop dostane poslednú odpoveď (u Claude Code cez prepis relácie, ktorého cestu hook dostane vo vstupe).
+- Skript čakania vie agenta zobudiť. To je buď správa v schránke s budičom (kapitola 8), alebo komentár v správcovi
+  úloh, ktorý riešiteľa zobudí (kapitola 7).
 
 ### Náš príklad
 
