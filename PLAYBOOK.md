@@ -14,9 +14,16 @@ ktorý sa pri štarte načíta, a kontrola, ktorá zlyhá, keď agent pravidlo p
 Systém preto stojí na troch veciach. Pravidlá a rozhodnutia sú súbory v gite. Chybu uznanú operátorom sprevádza zmena
 súboru, ktorý správanie riadi. Čo sa dá skontrolovať strojom, kontroluje hook alebo skript, nie dobrá vôľa modelu.
 
-Každá kapitola 1 až 11 má štyri časti. Problém hovorí, čo sa bez mechanizmu pokazí. Mechanizmus opisuje, ako to
-robíme. Ako to postaviť dáva kroky, formát súboru a príklad. Náš príklad ukazuje cesty v tomto repe, kde si hotovú
-verziu prečítaš. Kapitola 8 má navyše časť Kedy to potrebuješ. Kapitola 12 je poradie práce na prvý týždeň.
+Každá kapitola 1 až 11 má rovnakú stavbu. Problém hovorí, čo sa bez mechanizmu pokazí, aj pre čitateľa, ktorý náš
+systém nepozná. Kedy to potrebuješ hovorí, kedy mechanizmus nestavať. Mechanizmus opisuje, ako to funguje. Ako to
+postaviť dáva kroky, formát súboru a príklad, bez nášho kódu. Čo od runtime vyžaduje vymenúva, čo musí vedieť nástroj,
+v ktorom agent beží. Náš príklad ukazuje cesty v tomto repe, kde si hotovú verziu prečítaš. Kapitola 12 je poradie práce
+na prvý týždeň.
+
+Skripty, bez ktorých by harness nebežal (budič, čistý kontext, správy medzi agentmi, obal správcu úloh), žijú v repe
+`https://github.com/gavalierm/agent-runtime`. Repo je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Každý
+mechanizmus je preto opísaný tak, aby si ho postavil bez odkazu. Odkaz je len cesta, kde si hotový kód prečítaš, keď
+bude verejný.
 
 Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
 žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
@@ -34,6 +41,14 @@ načíta, skontroluje a opraví.
 | správca servera | agent s rootom, robí len prácu, ktorá root alebo citlivý úkon potrebuje |
 | správca úloh | nástroj s úlohami, stavmi a komentármi, u nás Tasker |
 | persona, rola | súbor `PERSONA.md` v repe agenta a mandát opísaný v `roles/<slug>.md`, nezávislý od mena agenta |
+| runtime | nástroj, v ktorom agent beží a ktorý mu dodá model, súbory a príkazy, u nás Claude Code |
+| relácia | jedno spustenie agenta nad repom od štartu po čistý kontext alebo koniec procesu |
+| kontext | všetok text, ktorý model pri jednom volaní dostane, teda pravidlá, rozhovor a výsledky nástrojov |
+| kompakcia | skrátenie kontextu, pri ktorom runtime nahradí starý rozhovor súhrnom |
+| hook | skript, ktorý runtime spustí pri udalosti (štart relácie, prompt, použitie nástroja, koniec odpovede) a ktorý môže pridať text do kontextu alebo krok zamietnuť |
+| pamäť | súbory agenta v repe (`memory/`), v ktorých je to, čo má prežiť reláciu a presahuje jeden projekt |
+| skill | súbor s postupom pre agenta a prípadne so skriptom, ktorý agent použije, keď úloha zodpovedá jeho popisu |
+| sub-agent | druhá relácia, ktorú hlavná relácia spustí na jednu dielčiu prácu a ktorá vráti len výsledok |
 | vlákno | trvalá relácia agenta v jeho nástroji (u nás vlákno v T3 Code), prežije jednotlivé odpovede a dá sa do nej poslať text |
 | vlákno témy | ďalšie vlákno toho istého agenta, ktoré vedie jednu tému, hlavné vlákno je to, v ktorom agent beží predvolene |
 | ťah | jedno volanie modelu od vstupu po koniec odpovede, model pri ňom znova číta celý kontext |
@@ -51,7 +66,8 @@ Skripty v repe sú bash a Node.js 22 alebo novší. Verziu vyžaduje príkaz tes
 používajú len moduly `node:`, nič sa neinštaluje.
 Hooky sú hooky Claude Code (SessionStart, UserPromptSubmit, PreToolUse, Stop). Fungujú, len keď ich zapojíš do nastavenia
 Claude Code, repo to za teba nerobí.
-Cesty `/opt/agent-rules` a `~/Work/agent-rules` sú naše nasadenia klonu pravidiel. Nahraď ich svojimi.
+Klon pravidiel máme nasadený v pevných cestách na našich strojoch. V texte ich nahrádza `<klon pravidiel>`, ty si zvoľ
+vlastnú cestu.
 Windows sme neoverili. Skripty pobežia len cez WSL alebo Git Bash, bez bashu a Node nepobežia vôbec.
 Mechanizmy v texte stoja aj bez našich skriptov. Podľa časti "Ako to postaviť" v každej kapitole si ich napíšeš vo
 svojom jazyku a svojom nástroji.
@@ -64,37 +80,56 @@ Relácia modelu zanikne pri čistom kontexte, kompakcii, reštarte aj pri výmen
 po nej nevie. Operátor potom vysvetľuje znova, kto agent je, čo smie a čo sa už dohodlo. Agent, ktorého správanie
 závisí od toho, ako sa relácia vyvinie, je nepredvídateľný.
 
+Druhý problém vznikne pri viac agentoch. Keď pravidlá a poznatky žijú v oknách rozhovorov, nikto nevie, čo ktorý agent
+vie, a nedá sa to skontrolovať ani vrátiť späť.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď agent pracuje dlhšie než jednu reláciu, alebo keď ich máš viac. Potrebuješ to aj vtedy, keď chceš
+vedieť, čo a prečo sa v jeho správaní zmenilo, lebo história je v gite.
+
+Nepotrebuješ to pri jednorazovej práci, ktorú dokončí jedna relácia. Pri jednom agentovi na jednom projekte stačí
+súbor s pokynmi v koreni projektu (u Claude Code `CLAUDE.md`) a zvyšok kapitoly si prečítaj ako ukážku, kam to smeruje.
+
 ### Mechanizmus
 
-Agent je repo v gite. Obsahuje personu (`PERSONA.md`), súbor runtime, ktorý personu importuje, pamäť a vlastné
+Agent je repo v gite. Obsahuje personu (`PERSONA.md`), súbor pre runtime, ktorý personu importuje, pamäť a vlastné
 skilly. Relácia je len jedno spustenie nad týmto repom. Pri štarte sa načíta persona a pamäť. Čo má prežiť reláciu,
 agent zapíše do súborov, commitne a pushne.
 
 Persona hovorí, kto agent je, ako pracuje s operátorom, čo spravuje a kde sú jeho hranice. Nemá mená nástrojov
 konkrétneho runtime, aby sa dala preniesť. Pravidlá, ktoré potrebuje aj iný agent, v nej nie sú (kapitola 2).
 
-Pamäť drží fakty, ktoré presahujú jeden projekt. Rozhodnutia a postupy patria do dokumentov projektu a do registra
-rozhodnutí. Poučenie z chyby sa z pamäte prenesie do persony.
+Pamäť drží fakty, ktoré presahujú jeden projekt, napríklad kde je čo uložené a kto čo preferuje. Rozhodnutia a postupy
+patria do dokumentov projektu a do registra rozhodnutí (kapitola 4). Poučenie z chyby sa z pamäte prenesie do persony
+a položka v pamäti sa zmaže, lebo pamäť sa pri štarte len prečíta, kým persona agenta riadi.
 
 Štart relácie je vždy rovnaký. Agent urobí `git fetch origin && git rebase origin/main` v repe agenta a v repe
-pravidiel, potom prečíta pamäť a schránku. `git pull` sa nepoužíva, lebo súbežné fetche viacerých relácií v jednom
-klone zapíšu do `FETCH_HEAD` dva riadky a pull padne.
+pravidiel, potom prečíta pamäť a schránku (kapitola 8). Príkaz `git pull` sa nepoužíva. Viac relácií v jednom klone
+spúšťa fetch naraz, každý zapíše do súboru `.git/FETCH_HEAD` svoj riadok a pull potom padne na dvoch riadkoch.
 
-Commit podpisuje agent menom `<Agent> (<stroj>)` a vždy so zoznamom súborov za `--`, lebo index klonu zdieľa viac relácií.
-Zakázané sú holý `git commit`, `-a`, `git add -A` aj `git add .`. Práca je hotová, keď je `git status --short` po pushi
+Commit podpisuje agent menom `<Agent> (<stroj>)`, aby bolo v histórii vidno, kto a kde ho urobil. Commituje vždy so
+zoznamom súborov za `--`, lebo index klonu zdieľa viac relácií. Zakázané sú holý `git commit`, `-a`, `git add -A`
+aj `git add .`, lebo by vzali rozpracované súbory inej relácie. Práca je hotová, keď je `git status --short` po pushi
 prázdny.
 
 ### Ako to postaviť
 
 1. Založ súkromné repo pre agenta s vlastným kľúčom na zápis. Jeden kľúč na agenta ukáže, kto pushol. Tajomstvá patria
    do súborov s právami `600` mimo repa.
-2. Napíš `PERSONA.md`. Prvý riadok je nadpis s menom, pod ním riadok s rolami, potom sekcie. Päť sekcií stačí.
-3. Napíš súbor runtime, ktorý personu importuje. Pre Claude Code je to `CLAUDE.md` v koreni repa.
-4. Založ `memory/` s indexom `memory/MEMORY.md`, v ktorom je jeden riadok na súbor pamäte.
+2. Napíš `PERSONA.md`. Prvý riadok je nadpis s menom, pod ním riadok s rolami, potom sekcie. Päť sekcií stačí. Kto som,
+   ako pracujem s operátorom, čo spravujem, hranice, kontinuita.
+3. Napíš súbor pre runtime, ktorý personu importuje. Pre Claude Code je to `CLAUDE.md` v koreni repa a riadok
+   `@PERSONA.md` vloží obsah súboru do kontextu.
+4. Založ `memory/` s indexom `memory/MEMORY.md`. Index má jeden riadok na súbor pamäte, odkaz a jednu vetu, o čom
+   súbor je.
 5. Do persony napíš pravidlo štartu (fetch, rebase, pamäť, schránka) a konca (nedokončené do pamäte, commit, push).
-6. Zapni hook pre-commit, ktorý spustí kontroly repa (kapitoly 4 a 6). Bez nich sa pravidlá rozídu.
+6. Zapni git hook pre-commit, ktorý spustí kontroly repa (kapitoly 4 a 6). Git hook je skript v `.githooks/`, zapneš
+   ho príkazom `git config core.hooksPath .githooks`. Bez kontrol sa pravidlá rozídu.
+7. Over to jednou skúškou. Nechaj agenta zapísať fakt do pamäte, commitni, vyčisti kontext (alebo spusti novú reláciu)
+   a spýtaj sa ho na ten fakt.
 
-Súbor runtime:
+Súbor pre runtime:
 
 ```
 @PERSONA.md
@@ -103,6 +138,19 @@ Súbor runtime:
 
 Tento súbor pridáva k PERSONA.md len to, čo patrí behu na tomto stroji.
 ```
+
+Riadok indexu pamäte:
+
+```
+- [Kde je tajomstvo k API](tajomstvo_api.md), cesta k súboru a kto ho smie čítať
+```
+
+### Čo od runtime vyžaduje
+
+- Načíta pri štarte súbor s pokynmi z pracovného priečinka. Claude Code číta `CLAUDE.md`, iný nástroj má iný názov.
+- Vie vložiť jeden súbor do druhého. Ak to nevie, súbor pre runtime obsahuje celú personu a ty ho z `PERSONA.md`
+  generuješ skriptom, aby texty nezačali žiť dvakrát.
+- Pustí agenta do shellu s gitom a kľúčom na zápis.
 
 ### Náš príklad
 
