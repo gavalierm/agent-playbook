@@ -1373,7 +1373,9 @@ Nestavaj všetko naraz. Každý krok má vlastnú hodnotu a ďalší na ňom sto
    každé zamietnutie nesie riadok "Správny postup:".
 6. Druhý týždeň, správca úloh a postup plán, stavba, kontrola. Až keď agent robí viac vecí naraz.
 7. Druhý až tretí týždeň, roly a druhý agent. Až keď existuje práca, ktorú nemá robiť prvý agent.
-8. Potom schránky a budič. Až keď dvaja agenti potrebujú posielať výsledky.
+8. Potom schránky a budič (kapitola 8). Až keď dvaja agenti potrebujú posielať výsledky.
+9. Nakoniec automatické čistenie kontextu (kapitola 11, časť "Automatické čistenie"). Ručné čistenie so zápisom stavu
+   do pamäte máš od prvého dňa.
 
 ### Čo odložiť
 
@@ -1389,5 +1391,7 @@ priečinku a vlastný shell skript sú znaky, že si dokumentáciu neprečítal.
 jej oficiálnej stránky prečítanej celej.
 
 Dôvody v tomto playbooku vychádzajú z praxe na jednom serveri s jedným operátorom. Budič, obal pre správcu úloh a hook
-`clear_bridge.mjs` sú viazané na náš runtime. Zvyšok je prenosný, teda persona v gite, register rozhodnutí, slučka chyby,
-hooky so správnym postupom a úloha so stavmi.
+`clear_bridge.mjs` sú viazané na náš runtime. Kapitoly 7, 8 a 11 opisujú ich stavbu tak, aby si ich postavil bez nášho
+kódu. Náš kód je v repe `https://github.com/gavalierm/agent-runtime`, ktoré je zatiaľ súkromné a zverejní sa po vyčistení
+(D0171). Zvyšok je prenosný hneď, teda persona v gite, register rozhodnutí, slučka chyby, hooky so správnym postupom
+a úloha so stavmi.

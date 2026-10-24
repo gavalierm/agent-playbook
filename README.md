@@ -7,8 +7,8 @@ plugin a nič sa z neho neinštaluje.
 
 ## Kde začať
 
-Prečítaj `PLAYBOOK.md`. Každá kapitola má problém, mechanizmus, kroky a odkaz
-na náš príklad v tomto repe. Skopíruj mechanizmy, nie naše pravidlá. Pravidlá
+Prečítaj `PLAYBOOK.md`. Každá kapitola má problém, časť Kedy to potrebuješ, mechanizmus, kroky bez nášho kódu, čo vyžaduje od runtime
+a odkaz na náš príklad v tomto repe. Skopíruj mechanizmy, nie naše pravidlá. Pravidlá
 sú odpoveďou na naše chyby a tvoje budú iné.
 
 ## Čo tu je
@@ -28,7 +28,8 @@ sú odpoveďou na naše chyby a tvoje budú iné.
 ## Čo v repe nie je
 
 Súkromné repo prevádzky nesie veci viazané na jedného operátora. Sú v ňom mená ľudí, agentov, strojov a účtov, adresy,
-persony agentov a runtime správcu agentov (budič, schránky). Preto sa neprenášajú. Odkazy na ne v `PLAYBOOK.md` a v kóde
+persony agentov a runtime správcu agentov (budič, schránky). Preto sa neprenášajú. Runtime žije v repe
+`https://github.com/gavalierm/agent-runtime`, ktoré je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Odkazy na ne v `PLAYBOOK.md` a v kóde
 ostali, ukazujú do súkromného repa prevádzky. Ostatné súbory, ktoré text spomína a ktoré tu nie sú, opisuje táto tabuľka.
 Zástupný vzor `rozhodnutia/D0xxx.md` znamená ľubovoľný záznam rozhodnutia. Kontrola `lib/path_check.mjs` zlyhá, keď text
 spomenie cestu, ktorá v repe nie je a nie je v tabuľke.
