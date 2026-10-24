@@ -1065,8 +1065,9 @@ riadok "Správny postup:" (kapitola 6).
 ### Náš príklad
 
 Pravidlá schránok sú v `env/server/CLAUDE.md`, časť "Schránky a budič". Skript odoslania, skript odpovede, budič
-a trasy sú v našom runtime, ktorý v tomto repe nie je. Ich zverejnenie alebo odkaz na ne je otvorená vec (D0170).
-Zatiaľ ich opisuje tabuľka "Čo v repe nie je" v `README.md`, vrátane toho, čo z nich potrebuješ na stavbu. Ide o
+a trasy sú v našom runtime, ktorý v tomto repe nie je. Žije v repe `https://github.com/gavalierm/agent-runtime`, ktoré
+je zatiaľ súkromné a zverejní sa po vyčistení (D0171). Kapitola ho preto opisuje tak, aby si nebol na odkaze závislý.
+Skripty opisuje aj tabuľka "Čo v repe nie je" v `README.md`, vrátane toho, čo z nich potrebuješ na stavbu. Ide o
 `bin/ask_agent.sh` (skript odoslania, test `hooks/ask_agent.test.mjs`), `runtime/reply.sh` (skript odpovede),
 `runtime/driver.mjs` (budič), `runtime/route.mjs` (trasy odpovedí a zoznam tém) a `runtime/README.md` (opis runtime,
 časť "Budenie"). Hook proti čakaniu `hooks/no_model_wait.mjs` v repe nie je. Pravidlá pre správy agentom sú
