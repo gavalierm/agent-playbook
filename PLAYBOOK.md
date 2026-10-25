@@ -261,8 +261,8 @@ tokeny pri každom volaní modelu.
 ### Náš príklad
 
 Tabuľka vrstiev je v `README.md`. Index rolí je `roles/ROLES.md`, pravidlá rolí `roles/zastupca-operatora.md`,
-`roles/spravca-agentov.md`, `roles/pracovny-agent.md` a `roles/dizajner.md`. Hooky sú `hooks/identity.mjs`,
-`hooks/rules_delta.mjs` a `hooks/own_rule_scope.mjs`. Nasadenie robí `env/server/install.sh`, duplikáty hľadá
+`roles/spravca-agentov.md`, `roles/pracovny-agent.md` a `roles/dizajner.md`. Hooky sú [hooks/identity.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/identity.mjs),
+[hooks/rules_delta.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/rules_delta.mjs) a [hooks/own_rule_scope.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/own_rule_scope.mjs). Nasadenie robí `env/server/install.sh`, duplikáty hľadá
 `lib/rule_dupes.mjs`, strop slov drží `lib/global_word_cap.txt`. Pravidlo "pokyn v rozpore s pravidlom" je záznam
 `rozhodnutia/D0144.md`. Tieto štyri súbory v repe nie sú, sú viazané na náš runtime alebo súkromné. Čo robia, je
 v tabuľke "Čo v repe nie je" v `README.md`.
@@ -354,7 +354,7 @@ a podmienkou hotového.
 
 Rolu opisuje `roles/zastupca-operatora.md`, časti "Čo urobí sám a čo čaká na operátora", "Zadanie od operátora",
 "Hranice" a "Kontinuita". Čo si operátor vyhradil, je v `roles/ROLES.md`. Rozhodnutie s dvoma cestami je v
-`global/CLAUDE.md`, §6, prijatá námietka v §1. Riadok "Čaká na teba:" kontroluje `hooks/reply_guard.mjs` s premennou
+`global/CLAUDE.md`, §6, prijatá námietka v §1. Riadok "Čaká na teba:" kontroluje [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs) s premennou
 `AR_ROZHODNUTIA=1`. Rozsah `schvalene` je v `rozhodnutia/ROZSAHY.md`.
 
 ## 4. Register rozhodnutí
@@ -449,7 +449,7 @@ moc: operator
 zapisal: <agent>
 datum: <RRRR-MM-DD>
 zdroj: <vlákno alebo úloha, kde to zaznelo>
-subory: hooks/reply_guard.mjs
+subory: <cesta k súboru, ktorý pravidlo vymáha>
 ---
 Odpoveď operátorovi má najviac šesť viet prózy. Dôvod je, že dlhú odpoveď operátor nečíta.
 Zamietnutý bol strop dvanásť viet, lebo ho agenti pravidelne dosiahli.
@@ -580,7 +580,7 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
 ### Náš príklad
 
 Pravidlá chýb sú v `global/CLAUDE.md`, §4, prijatá námietka v §1. Skript je `bin/chyba.sh`, skill
-`skills/chyba/SKILL.md`, hook `hooks/objection_fix.mjs`, testy `lib/chyba.test.mjs` a `hooks/objection_fix.test.mjs`.
+`skills/chyba/SKILL.md`, hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), testy `lib/chyba.test.mjs` a [test/objection_fix.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/objection_fix.test.mjs).
 Rozhodnutie o slučke je `rozhodnutia/D0142.md`, súkromný záznam, ktorý v repe nie je (obsah je v tabuľke "Čo v repe
 nie je" v `README.md`). Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie agentov". Sekciu
 "Vlastná chyba" ukazuje `PERSONA.md` v repe správcu agentov.
@@ -682,7 +682,7 @@ Zapojenie:
 {
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node <klon pravidiel>/hooks/reply_guard.mjs" } ] }
+      { "hooks": [ { "type": "command", "command": "node <klon agent-runtime>/hooks/reply_guard.mjs" } ] }
     ],
     "PreToolUse": [
       { "matcher": "Bash",
@@ -702,10 +702,10 @@ Zapojenie:
 
 ### Náš príklad
 
-Hooky sú v `hooks/*.mjs` a ich testy v `hooks/*.test.mjs`. Helper zamietnutia je `lib/deny.mjs` (pre git hooky
+Hooky sú v priečinku `hooks/` repa agent-runtime a ich testy v jeho priečinku `test/`, v tomto repe ich nie je. Helper zamietnutia je `lib/deny.mjs` (pre git hooky
 `lib/deny.sh`), strážca `lib/deny_check.mjs`, rozhodnutie `rozhodnutia/D0141.md`. Zapojenie robí funkcia `settings` v
 `env/server/install.sh`, ktoré v repe nie sú (v tabuľke "Čo v repe nie je" v `README.md`). Hlavičkové komentáre
-`hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`, `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`
+[hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs), [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), [hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) a [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs)
 opisujú, čo hook vymáha a čo ho vyvolalo.
 
 ## 7. Práca je úloha v správcovi úloh
@@ -812,7 +812,7 @@ správnym používateľom a s menom agenta v prostredí. Číslo úlohy v texte 
 
 Pravidlá sú v `env/server/CLAUDE.md`, častiach "Správca úloh" a "Postup úlohy". Plán schvaľuje zástupca podľa
 `roles/zastupca-operatora.md`. Tok práce a 30 minút pre blokér sú v `roles/spravca-agentov.md`, časť "Čo spravuje a
-tok práce". Hooky sú `hooks/todo_after_comment.mjs` a `hooks/tasker_work.mjs`. Obal je `bin/tk`. Hook
+tok práce". Hooky sú [hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) a [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs). Obal je `bin/tk`. Hook
 `hooks/tasker_root.mjs`, skript `bin/uloha-webu.sh` (založí úlohu pre agenta webu spolu s úlohou posudku dizajnéra)
 a hook `hooks/web_review.mjs` (zamietne všetko ostatné) sú viazané na náš správca úloh a v repe nie sú, opisuje ich
 tabuľka "Čo v repe nie je" v `README.md`. Samotný správca úloh v tomto repe nie je, je to samostatný nástroj. Most,
@@ -1145,8 +1145,8 @@ Pred zadaním úlohy sub-agentovi agent pozrie posledné záznamy práce na úlo
 ### Náš príklad
 
 Pravidlo modelov a odovzdania práce je v `global/CLAUDE.md`, §6. Delegovanie je v `roles/spravca-agentov.md`, časť
-"Delegovanie", pokyny agentom v časti "Pokyny agentom a oprava". Hook `hooks/tasker_work.mjs` s testom
-`hooks/tasker_work.test.mjs` ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`.
+"Delegovanie", pokyny agentom v časti "Pokyny agentom a oprava". Hook [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs) s testom
+[test/tasker_work.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/tasker_work.test.mjs) ukazuje, ako sa číslo úlohy nájde v zadaní. Skilly pre opakované postupy sú v `skills/`.
 Náš `skills/projekt-novy` (založenie projektu webu) v repe nie je, je viazaný na naše účty a domény.
 
 ## 10. Písanie
@@ -1231,7 +1231,7 @@ na nasadenie.
 
 Skill je `skills/unslop/SKILL.md`, jadro je jeho sekcia "Jadro". Do kontextu ho vkladá `hooks/unslop.mjs`, ktorý v repe nie je,
 píšeš si ho sám. Strop odpovede drží
-`hooks/reply_guard.mjs` s testom `hooks/reply_guard.test.mjs`. Pravidlá sú v `global/CLAUDE.md`, §2 a §5. Pravidlo
+[hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs) s testom [test/reply_guard.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/reply_guard.test.mjs). Pravidlá sú v `global/CLAUDE.md`, §2 a §5. Pravidlo
 súborov pre operátora je v `env/server/CLAUDE.md`, časť "Schránky a budič". Schválené vzory opakovanej práce sú v
 `artifacts/` a ich používanie opisuje `skills/artefakty/SKILL.md`. Ani jedno v repe nie je, sú to naše pracovné výstupy.
 

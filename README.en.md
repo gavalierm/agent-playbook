@@ -22,7 +22,7 @@ mistakes, and yours will be different.
 | `roles/` | the role index `ROLES.md` and the rules of each role |
 | `env/server/CLAUDE.md` | an example of environment rules (a server with several agents) |
 | `skills/unslop/`, `skills/chyba/` | skills: writing without the marks of machine text, an acknowledged mistake |
-| `hooks/` | hooks with tests: identity and roles, change of rules, scope of a rule, the agent's reply, an accepted objection, task manager tasks |
+| [hooks/](https://github.com/gavalierm/agent-runtime/tree/main/hooks) and [test/](https://github.com/gavalierm/agent-runtime/tree/main/test) in the agent-runtime repo | hooks with tests, not in this repo: identity and roles, change of rules, scope of a rule, the agent's reply, an accepted objection, task manager tasks |
 | `lib/` | helper code of the hooks, the decision register `rozhodnutia.mjs`, the public repo check `public_check.mjs`, the path link check `path_check.mjs` |
 | `bin/chyba.sh`, `bin/rozhodni.sh`, `bin/tk` | recording an acknowledged mistake, recording a decision, the task manager wrapper |
 | `rozhodnutia/` | the schema of the decision register and the scope tags |
@@ -101,13 +101,13 @@ the line and the path.
 The tests need Node 22 or newer:
 
 ```
-node --test 'hooks/*.test.mjs' 'lib/*.test.mjs'
+node --test 'lib/*.test.mjs'
 node lib/public_check.mjs
 node lib/path_check.mjs
 ```
 
-The `*.test.mjs` hooks run in temporary directories and do not call a live Tasker or mailboxes. The file
-`hooks/reply_guard.test.mjs` is not a test in the sense of `node:test`, it runs as a script and fails with code 1.
+The tests run in temporary directories and do not call a live Tasker or mailboxes. The hook tests are in the agent-runtime
+repo (`node --test 'test/*.test.mjs'` in its clone).
 
 ## Language
 

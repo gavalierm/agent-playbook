@@ -272,7 +272,7 @@ every model call.
 
 The table of layers is in `README.md`. The role index is `roles/ROLES.md`, and the role rules are
 `roles/zastupca-operatora.md`, `roles/spravca-agentov.md`, `roles/pracovny-agent.md` and `roles/dizajner.md`. The hooks are
-`hooks/identity.mjs`, `hooks/rules_delta.mjs` and `hooks/own_rule_scope.mjs`. Deployment is done by
+[hooks/identity.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/identity.mjs), [hooks/rules_delta.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/rules_delta.mjs) and [hooks/own_rule_scope.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/own_rule_scope.mjs). Deployment is done by
 `env/server/install.sh`, duplicates are found by `lib/rule_dupes.mjs`, and the word cap is held by
 `lib/global_word_cap.txt`. The rule "an instruction against a rule" is the record `rozhodnutia/D0144.md`. These four files
 are not in the repo, they are tied to our runtime or private. What they do is in the table "What is not in the repo"
@@ -369,7 +369,7 @@ command for the check, a step after it is met and a done condition.
 The role is described in `roles/zastupca-operatora.md`, parts "What it does alone and what waits for the operator" ("Čo
 urobí sám a čo čaká na operátora"), "Order from the operator" ("Zadanie od operátora"), "Limits" ("Hranice") and
 "Continuity" ("Kontinuita"). What the operator reserved is in `roles/ROLES.md`. The decision with two paths is in
-`global/CLAUDE.md`, §6, the accepted objection in §1. The line "Waiting for you:" is checked by `hooks/reply_guard.mjs` with
+`global/CLAUDE.md`, §6, the accepted objection in §1. The line "Waiting for you:" is checked by [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs) with
 the variable `AR_ROZHODNUTIA=1`. The scope `schvalene` is in `rozhodnutia/ROZSAHY.md`.
 
 ## 4. Decision register
@@ -466,7 +466,7 @@ moc: operator
 zapisal: <agent>
 datum: <YYYY-MM-DD>
 zdroj: <thread or task where it was said>
-subory: hooks/reply_guard.mjs
+subory: <path of the file that enforces the rule>
 ---
 A reply to the operator has at most six sentences of prose. The reason is that the operator does not read a long reply.
 A cap of twelve sentences was rejected, because agents reached it regularly.
@@ -603,8 +603,8 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
 ### Our example
 
 The mistake rules are in `global/CLAUDE.md`, §4, the accepted objection in §1. The script is `bin/chyba.sh`, the skill
-`skills/chyba/SKILL.md`, the hook `hooks/objection_fix.mjs`, the tests `lib/chyba.test.mjs` and
-`hooks/objection_fix.test.mjs`. The decision on the loop is `rozhodnutia/D0142.md`, a private record that is not in the repo
+`skills/chyba/SKILL.md`, the hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), the tests `lib/chyba.test.mjs` and
+[test/objection_fix.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/objection_fix.test.mjs). The decision on the loop is `rozhodnutia/D0142.md`, a private record that is not in the repo
 (its content is in the table "What is not in the repo" in `README.md`). The improvement procedure is in
 `roles/spravca-agentov.md`, part "Improving agents" ("Zlepšovanie agentov"). The section "Own mistake" is shown by
 `PERSONA.md` in the agent manager's repo.
@@ -709,7 +709,7 @@ Wiring:
 {
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node <rules clone>/hooks/reply_guard.mjs" } ] }
+      { "hooks": [ { "type": "command", "command": "node <agent-runtime clone>/hooks/reply_guard.mjs" } ] }
     ],
     "PreToolUse": [
       { "matcher": "Bash",
@@ -730,11 +730,11 @@ Wiring:
 
 ### Our example
 
-The hooks are in `hooks/*.mjs` and their tests in `hooks/*.test.mjs`. The rejection helper is `lib/deny.mjs` (for git hooks
+The hooks are in the `hooks/` folder of the agent-runtime repo and their tests in its `test/` folder, not in this repo. The rejection helper is `lib/deny.mjs` (for git hooks
 `lib/deny.sh`), the guard is `lib/deny_check.mjs`, the decision is `rozhodnutia/D0141.md`. The wiring is done by the function
 `settings` in `env/server/install.sh`, which are not in the repo (see the table "What is not in the repo" in `README.md`).
-The header comments of `hooks/reply_guard.mjs`, `hooks/objection_fix.mjs`, `hooks/todo_after_comment.mjs` and
-`hooks/tasker_work.mjs` describe what the hook enforces and what triggered it.
+The header comments of [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs), [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), [hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) and
+[hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs) describe what the hook enforces and what triggered it.
 
 ## 7. Work is a task in a task manager
 
@@ -845,7 +845,7 @@ gives a ready replacement.
 The rules are in `env/server/CLAUDE.md`, parts "Task manager" ("Správca úloh") and "Task procedure" ("Postup úlohy"). The
 deputy approves the plan according to `roles/zastupca-operatora.md`. The flow of work and the 30 minutes for a blocker are in
 `roles/spravca-agentov.md`, part "What it manages and the flow of work" ("Čo spravuje a tok práce"). The hooks are
-`hooks/todo_after_comment.mjs` and `hooks/tasker_work.mjs`. The wrapper is `bin/tk`. The hook `hooks/tasker_root.mjs`, the
+[hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) and [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs). The wrapper is `bin/tk`. The hook `hooks/tasker_root.mjs`, the
 script `bin/uloha-webu.sh` (creates a task for a web agent together with a task for a designer's review) and the hook
 `hooks/web_review.mjs` (rejects everything else) are tied to our task manager and are not in the repo, and the table "What is
 not in the repo" in `README.md` describes them. The task manager itself is not in this repo, it is a separate tool. The
@@ -1202,7 +1202,7 @@ agent looks at the latest work records on the task, so two do not work on it at 
 
 The rule on models and handing over work is in `global/CLAUDE.md`, §6. Delegation is in `roles/spravca-agentov.md`, part
 "Delegation" ("Delegovanie"), and the instructions to agents in the part "Instructions to agents and fixing" ("Pokyny agentom
-a oprava"). The hook `hooks/tasker_work.mjs` with the test `hooks/tasker_work.test.mjs` shows how the task number is found in
+a oprava"). The hook [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs) with the test [test/tasker_work.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/tasker_work.test.mjs) shows how the task number is found in
 the assignment. Skills for repeated procedures are in `skills/`. Our `skills/projekt-novy` (creating a web project) is not in
 the repo, it is tied to our accounts and domains.
 
@@ -1291,8 +1291,8 @@ verification until deployment.
 ### Our example
 
 The skill is `skills/unslop/SKILL.md`, the core is its section "Core" ("Jadro"). `hooks/unslop.mjs` inserts it into the
-context. It is not in the repo, you write your own. The reply cap is held by `hooks/reply_guard.mjs` with the test
-`hooks/reply_guard.test.mjs`. The rules are in `global/CLAUDE.md`, §2 and §5. The rule on files for the operator is in
+context. It is not in the repo, you write your own. The reply cap is held by [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs) with the test
+[test/reply_guard.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/reply_guard.test.mjs). The rules are in `global/CLAUDE.md`, §2 and §5. The rule on files for the operator is in
 `env/server/CLAUDE.md`, part "Mailboxes and the waker" ("Schránky a budič"). Approved patterns of repeated work are in
 `artifacts/`, and their use is described by `skills/artefakty/SKILL.md`. Neither is in the repo, they are our working
 outputs.

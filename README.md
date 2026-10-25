@@ -23,7 +23,7 @@ sú odpoveďou na naše chyby a tvoje budú iné.
 | `roles/` | index rolí `ROLES.md` a pravidlá každej roly |
 | `env/server/CLAUDE.md` | príklad pravidiel prostredia (server s viacerými agentmi) |
 | `skills/unslop/`, `skills/chyba/` | skilly: písanie bez znakov strojového textu, uznaná chyba |
-| `hooks/` | hooky s testami: identita a roly, zmena pravidiel, rozsah pravidla, odpoveď agenta, prijatá námietka, úlohy správcu úloh |
+| [hooks/](https://github.com/gavalierm/agent-runtime/tree/main/hooks) a [test/](https://github.com/gavalierm/agent-runtime/tree/main/test) v repe agent-runtime | hooky s testami, tu ich nie je: identita a roly, zmena pravidiel, rozsah pravidla, odpoveď agenta, prijatá námietka, úlohy správcu úloh |
 | `lib/` | pomocný kód hookov, register rozhodnutí `rozhodnutia.mjs`, kontrola verejného repa `public_check.mjs`, kontrola odkazov na cesty `path_check.mjs` |
 | `bin/chyba.sh`, `bin/rozhodni.sh`, `bin/tk` | zápis uznanej chyby, zápis rozhodnutia, obal správcu úloh |
 | `rozhodnutia/` | schéma registra rozhodnutí a značky rozsahu |
@@ -102,14 +102,13 @@ commitov, ktoré idú von.
 Testy potrebujú Node 22 alebo novší:
 
 ```
-node --test 'hooks/*.test.mjs' 'lib/*.test.mjs'
+node --test 'lib/*.test.mjs'
 node lib/public_check.mjs
 node lib/path_check.mjs
 ```
 
-Hooky `*.test.mjs` bežia v dočasných priečinkoch a živý Tasker ani schránky
-nevolajú. Súbor `hooks/reply_guard.test.mjs` nie je test v zmysle `node:test`,
-beží ako skript a zlyhá kódom 1.
+Testy bežia v dočasných priečinkoch a živý Tasker ani schránky nevolajú. Testy hookov sú v repe agent-runtime
+(`node --test 'test/*.test.mjs'` v jeho klone).
 
 ## Jazyk
 

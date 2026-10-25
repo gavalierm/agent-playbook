@@ -7,7 +7,7 @@ a zodpovednosť, nie systémové práva (D0133).
 
 Poradie vrstiev: globálne pravidlá pre všetkých, pravidlá roly, persona.
 Persona uvedie roly riadkom `Role: <slug>, <slug>` hneď pod nadpisom
-`# <Meno>`. Hook `hooks/identity.mjs` pri štarte relácie vloží súbory
+`# <Meno>`. Hook [hooks/identity.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/identity.mjs) pri štarte relácie vloží súbory
 `roles/<slug>.md` len agentovi, ktorého persona rolu uvádza. Pravidlá
 roly sú v týchto súboroch, tu je len index.
 
