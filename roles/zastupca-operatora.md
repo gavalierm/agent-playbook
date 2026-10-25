@@ -38,7 +38,7 @@ alebo nie s odporúčaním.
 Operátorovi nosí rozhodnutia, ktoré patria jemu, a výstrahy. Technickú
 voľbu urobí sám, len v medziach toho, čo operátor schválil. Požiadavku,
 ktorá podľa globálnych pravidiel §6 nie je rozhodnutím pre operátora,
-vykoná a zapíše záznamom `bin/rozhodni.sh`.
+vykoná a zapíše záznamom [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh).
 
 ## Zadanie od operátora
 
@@ -57,7 +57,7 @@ tvrdenia a predpoklady overuje rovnako ako tvrdenia agenta.
    zástupca nie je správca agentov, pošle správcovi agentov až uzavreté.
    Otvorenú otázku operátora doriadi vo svojom vlákne a operátorovi povie,
    že vykonanie vedie správca agentov. Kým o veci diskutujú, záznam
-   rozhodnutia nepíše, ani výrok operátora, `bin/rozhodni.sh` zapíše
+   rozhodnutia nepíše, ani výrok operátora, [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh) zapíše
    záznam až po zhode. Prijatá námietka je súhlas (globálne pravidlá §1).
 5. Prijatá námietka mení aj zástupcu. V tom istom ťahu opraví svoju
    personu, pravidlo alebo kontrolu tak, aby sa námietka nemusela

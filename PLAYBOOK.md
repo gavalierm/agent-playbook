@@ -22,7 +22,8 @@ na prvý týždeň.
 
 Skripty, bez ktorých by harness nebežal (budič, čistý kontext, správy medzi agentmi, obal správcu úloh), žijú v repe
 `https://github.com/gavalierm/agent-runtime`. Repo je verejné (D0171). Každý mechanizmus je aj tak opísaný tak, aby si ho postavil bez
-odkazu. Odkaz je cesta, kde si hotový kód prečítaš.
+odkazu. Odkaz je cesta, kde si hotový kód prečítaš. Tam žijú aj skripty zápisu rozhodnutia a uznanej chyby, helper
+zamietnutia a kontroly tohto repa v jeho priečinkoch `bin/`, `lib/` a `test/`. Toto repo nenesie žiadny kód, len odkazy naň.
 
 Cesty sú voči koreňu repa, ak nie je uvedené inak. Toto repo je očistená kópia súkromného repa pravidiel, ktoré u nás
 žije v prevádzke. Cesty v častiach "Náš príklad" ukazujú do tohto repa, kde súbor existuje, inak do súkromného repa
@@ -402,7 +403,7 @@ nehovorí, že starý nahrádza. Moc bráni, aby o pravidlách rozhodol agent be
 `rozhodnutia/ROZSAHY.md` a kontrola ju vynucuje. Súbor `INDEX.md` je generovaný prehľad všetkých záznamov, ručne sa
 neupravuje.
 
-Zápis ide jednou cestou. Skript `bin/rozhodni.sh` pridelí číslo, zapíše súbor, prepíše `INDEX.md`, commitne pod menom
+Zápis ide jednou cestou. Skript [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh) pridelí číslo, zapíše súbor, prepíše `INDEX.md`, commitne pod menom
 agenta a pushne. Hook, ktorý zamietne každý iný zápis do záznamov, beží pred použitím nástroja. Zachytí zápis cez
 nástroj na úpravu súboru aj príkaz v shelli, vrátane `sed -i`, presmerovania a `tee`. Voľba `--dry-run` nezapíše nič,
 voľba `--zrus` rozhodnutie zruší.
@@ -465,8 +466,8 @@ Zamietnutý bol strop dvanásť viet, lebo ho agenti pravidelne dosiahli.
 ### Náš príklad
 
 Schéma je v `rozhodnutia/README.md`, značky v `rozhodnutia/ROZSAHY.md`. Ukážkové záznamy sú `rozhodnutia/D0141.md`,
-`rozhodnutia/D0142.md` a `rozhodnutia/D0144.md`, ktorý nahrádza `rozhodnutia/D0010.md`. Zápis robí `bin/rozhodni.sh`,
-logiku a kontrolu `lib/rozhodnutia.mjs` s testom `lib/rozhodnutia.test.mjs`. Zrušené tvrdenia číta `lib/doc_paths.mjs`
+`rozhodnutia/D0142.md` a `rozhodnutia/D0144.md`, ktorý nahrádza `rozhodnutia/D0010.md`. Zápis robí [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh),
+logiku a kontrolu [lib/rozhodnutia.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/rozhodnutia.mjs) s testom [test/rozhodnutia.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/rozhodnutia.test.mjs). Zrušené tvrdenia číta `lib/doc_paths.mjs`
 zo súboru `lib/retired_claims.txt`, pamäť kontroluje `lib/memory_claims.mjs`. Hooky sú `hooks/rozhodnutia_guard.mjs` a
 `hooks/rozhodnutia_context.mjs`. Záznamy D0010, D0141, D0142 a D0144, skripty `lib/doc_paths.mjs` a
 `lib/memory_claims.mjs`, zoznam `lib/retired_claims.txt` a oba hooky `rozhodnutia_*` v repe nie sú. Záznamy sú
@@ -512,7 +513,7 @@ zopakuje (replay) a kontrola sa ukáže, ako zlyháva. Replay nikdy nesiaha na �
 spadnúť na živú cestu, schránku alebo službu. Po zmene hodnoty, voľby alebo cesty agent nájde starú hodnotu príkazom
 `grep -rn` a opraví každý zásah, aj v dokumentoch a komentároch.
 
-Mechanickú časť robí `bin/chyba.sh`. Prijme triedu chyby a súbor, ktorý správanie riadi, a urobí štyri veci.
+Mechanickú časť robí [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh). Prijme triedu chyby a súbor, ktorý správanie riadi, a urobí štyri veci.
 
 1. Odmietne súbor, ktorý nie je commitnutý, aby hlásenie malo číslo commitu opravy.
 2. Zapíše do registra riadok (dátum, agent, trieda, súbor, commit, popis, číslo úlohy).
@@ -544,7 +545,7 @@ Opravu typu "zapísal som to do skillu" neschváli.
 1. Do globálnych pravidiel napíš sekciu o chybách. Definuj chybu, povedz, že je to chyba procesu, že oprava ide do
    súboru riadiaceho správanie a že kontrola musí na chybe zlyhať.
 2. Do persony daj sekciu "Vlastná chyba", ktorá na globálne pravidlo odkazuje a nesie krátke riadky incidentov.
-3. Napíš `bin/chyba.sh` s voľbami `--trieda`, `--subor`, `--popis`, `--pravda`, `--kontrola`. Register je súbor s
+3. Napíš [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh) s voľbami `--trieda`, `--subor`, `--popis`, `--pravda`, `--kontrola`. Register je súbor s
    tabulátormi mimo repa, napríklad `~/.local/state/<názov>/chyby.tsv`. Skript zistí commit príkazom
    `git log -1 --format=%h -- <súbor>` a odmietne súbor, ktorý má neuložené zmeny (`git status --porcelain -- <súbor>`
    nie je prázdny).
@@ -560,7 +561,7 @@ Opravu typu "zapísal som to do skillu" neschváli.
 6. Napíš test hooku s prepisom konverzácie z reálnej chyby. Test musí zlyhať, keď hook vypneš.
 7. Úlohu na kontrolu pri druhom výskyte zadaj agentovi, ktorý spravuje pravidlá (kapitola 7).
 
-Spustenie:
+Spustenie (skript je v repe agent-runtime, v klone vedľa tvojho repa):
 
 ```
 bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
@@ -579,8 +580,8 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
 
 ### Náš príklad
 
-Pravidlá chýb sú v `global/CLAUDE.md`, §4, prijatá námietka v §1. Skript je `bin/chyba.sh`, skill
-`skills/chyba/SKILL.md`, hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), testy `lib/chyba.test.mjs` a [test/objection_fix.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/objection_fix.test.mjs).
+Pravidlá chýb sú v `global/CLAUDE.md`, §4, prijatá námietka v §1. Skript je [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh), skill
+`skills/chyba/SKILL.md`, hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), testy [test/chyba.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/chyba.test.mjs) a [test/objection_fix.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/objection_fix.test.mjs).
 Rozhodnutie o slučke je `rozhodnutia/D0142.md`, súkromný záznam, ktorý v repe nie je (obsah je v tabuľke "Čo v repe
 nie je" v `README.md`). Postup zlepšovania je v `roles/spravca-agentov.md`, časť "Zlepšovanie agentov". Sekciu
 "Vlastná chyba" ukazuje `PERSONA.md` v repe správcu agentov.
@@ -702,8 +703,8 @@ Zapojenie:
 
 ### Náš príklad
 
-Hooky sú v priečinku `hooks/` repa agent-runtime a ich testy v jeho priečinku `test/`, v tomto repe ich nie je. Helper zamietnutia je `lib/deny.mjs` (pre git hooky
-`lib/deny.sh`), strážca `lib/deny_check.mjs`, rozhodnutie `rozhodnutia/D0141.md`. Zapojenie robí funkcia `settings` v
+Hooky sú v priečinku `hooks/` repa agent-runtime a ich testy v jeho priečinku `test/`, v tomto repe ich nie je. Helper zamietnutia je [lib/deny.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny.mjs) (pre git hooky
+[lib/deny.sh](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny.sh)), strážca [lib/deny_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny_check.mjs), rozhodnutie `rozhodnutia/D0141.md`. Zapojenie robí funkcia `settings` v
 `env/server/install.sh`, ktoré v repe nie sú (v tabuľke "Čo v repe nie je" v `README.md`). Hlavičkové komentáre
 [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs), [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), [hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) a [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs)
 opisujú, čo hook vymáha a čo ho vyvolalo.

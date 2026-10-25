@@ -1,7 +1,7 @@
 # Rozhodnutia
 
 Jeden súbor na rozhodnutie, `D0001.md` a ďalej. Píše ich len
-`bin/rozhodni.sh`, číta `lib/rozhodnutia.mjs` (`list`, `show`, `check`,
+[bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh), číta [lib/rozhodnutia.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/rozhodnutia.mjs) (`list`, `show`, `check`,
 `index`). `INDEX.md` generuje skript, ručne ho neupravuj. Značky rozsahu sú
 v `ROZSAHY.md`. Návrh a dôvody sú v úlohe Taskera 390.
 

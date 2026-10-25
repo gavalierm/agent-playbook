@@ -24,17 +24,17 @@ sú odpoveďou na naše chyby a tvoje budú iné.
 | `env/server/CLAUDE.md` | príklad pravidiel prostredia (server s viacerými agentmi) |
 | `skills/unslop/`, `skills/chyba/` | skilly: písanie bez znakov strojového textu, uznaná chyba |
 | [hooks/](https://github.com/gavalierm/agent-runtime/tree/main/hooks) a [test/](https://github.com/gavalierm/agent-runtime/tree/main/test) v repe agent-runtime | hooky s testami, tu ich nie je: identita a roly, zmena pravidiel, rozsah pravidla, odpoveď agenta, prijatá námietka, úlohy správcu úloh |
-| `lib/` | pomocný kód hookov, register rozhodnutí `rozhodnutia.mjs`, kontrola verejného repa `public_check.mjs`, kontrola odkazov na cesty `path_check.mjs` |
-| `bin/chyba.sh`, `bin/rozhodni.sh`, `bin/tk` | zápis uznanej chyby, zápis rozhodnutia, obal správcu úloh |
+| `lib/public_check.txt` | zoznam vzorov mien a adries pre kontrolu verejného repa, vzory sú v base64 |
+| [bin/](https://github.com/gavalierm/agent-runtime/tree/main/bin) a [lib/](https://github.com/gavalierm/agent-runtime/tree/main/lib) v repe agent-runtime | skripty zápisu uznanej chyby a rozhodnutia, register rozhodnutí, helper zamietnutia, kontroly `public_check.mjs` a `path_check.mjs`, tu ich nie je |
 | `rozhodnutia/` | schéma registra rozhodnutí a značky rozsahu |
 
 ## Čo v repe nie je
 
 Súkromné repo prevádzky nesie veci viazané na jedného operátora. Sú v ňom mená ľudí, agentov, strojov a účtov, adresy,
 persony agentov a runtime správcu agentov (budič, schránky). Preto sa neprenášajú. Runtime žije v repe
-`https://github.com/gavalierm/agent-runtime` (verejné, D0171). Odkazy na ne v `PLAYBOOK.md` a v kóde
+`https://github.com/gavalierm/agent-runtime` (verejné, D0171). Odkazy na ne v `PLAYBOOK.md`
 ostali, ukazujú do súkromného repa prevádzky alebo do repa runtime. Ostatné súbory, ktoré text spomína a ktoré tu nie sú, opisuje táto tabuľka.
-Zástupný vzor `rozhodnutia/D0xxx.md` znamená ľubovoľný záznam rozhodnutia. Kontrola `lib/path_check.mjs` zlyhá, keď text
+Zástupný vzor `rozhodnutia/D0xxx.md` znamená ľubovoľný záznam rozhodnutia. Kontrola [lib/path_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/path_check.mjs) zlyhá, keď text
 spomenie cestu, ktorá v repe nie je a nie je v tabuľke.
 
 | cesta | čo robí | prečo tu nie je |
@@ -53,6 +53,7 @@ spomenie cestu, ktorá v repe nie je a nie je v tabuľke.
 | `runtime/driver.mjs` | Budič doručí správu zo schránky agenta do vlákna a po riadku `HOTOVO-KONTEXT` pošle `/clear`. Na stavbu potrebuješ vedieť, že číta `inbox` každých 5 s, drží tiché okno a dávkuje, nikdy nepošle do vlákna s aktívnym behom a po odoslaní presunie súbory do `processed` (kapitola 8, body 5 a 6). | Je v repe správcu agentov a je viazaný na T3 Code a naše schránky. |
 | `runtime/README.md` | Opis runtime, teda schránky, budiča, odpovedí a nasadenia. Na stavbu z neho potrebuješ časť Budenie, ktorú kapitola 8 zhrnula. | Je v repe správcu agentov, opisuje naše nasadenie. |
 | `bin/kontext.sh` | Vypíše riadok `HOTOVO-KONTEXT <režim> <kľúč>`, ktorým agent končí odpoveď pred čistým kontextom. | Viazaný na budič a vlákna T3 Code. Postup je v kapitole 11 playbooku. |
+| `bin/tk` | Obal správcu úloh pre agenta pod rootom: spustí príkaz správcu úloh pod jeho používateľom, s jeho domovským priečinkom a s menom agenta v prostredí. | Viazaný na naše nasadenie, správca úloh u nás beží pod iným používateľom. Postup je v kapitole 7 playbooku. |
 | `lib/kontext.mjs` | Logika skriptu `bin/kontext.sh`. Zapíše odovzdávku a odmietne čistenie, keď úloha agenta čaká. | Viazaná na budič, vlákna T3 Code a náš správca úloh. |
 | `hooks/clear_bridge.mjs` | SessionStart hook po `/clear`. Zabráni návratu starého kontextu a urobí štart relácie. | Rieši vlastnosť nášho runtime T3 Code, u teba sa môže správať inak. |
 | `hooks/context_warning.mjs` | UserPromptSubmit hook, nad 80 tisíc tokenov kontextu pridá pokyn na čistý kontext. | Pokyn volá `bin/kontext.sh` a počíta s naším budičom. |
@@ -61,9 +62,9 @@ spomenie cestu, ktorá v repe nie je a nie je v tabuľke.
 | `hooks/tasker_root.mjs` | PreToolUse hook, zamietne priamy príkaz správcu úloh pod rootom, správny je obal `bin/tk`. | Rieši naše nasadenie, správca úloh u nás beží pod iným používateľom. |
 | `hooks/web_review.mjs` | PreToolUse hook, zamietne založenie úlohy webu mimo skriptu a čakanie, kým posudok dizajnéra nevyhovuje. | Viazaný na náš správca úloh a agentov webu. |
 | `bin/uloha-webu.sh` | Založí úlohu webu a k nej úlohu posudku dizajnéra, rodiča zablokuje. | Volá náš správca úloh a bránu posudku. |
-| `hooks/rozhodnutia_guard.mjs` | PreToolUse hook, zamietne zápis do záznamov rozhodnutí inak než skriptom `bin/rozhodni.sh`. | Počíta s naším archívom rozhodnutí a nasadením hookov. |
+| `hooks/rozhodnutia_guard.mjs` | PreToolUse hook, zamietne zápis do záznamov rozhodnutí inak než skriptom [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh). | Počíta s naším archívom rozhodnutí a nasadením hookov. |
 | `hooks/rozhodnutia_context.mjs` | SessionStart hook, ohlási rozhodnutia zmenené od posledného štartu agenta a otázky na operátora. | Číta naše záznamy, persony a správcu úloh. |
-| `lib/doc_paths.mjs` | Overí, že cesta v pokynoch agenta ukazuje na existujúci súbor, a zastaví zrušené tvrdenia. | Počíta s našimi strojmi a zoznamom zrušených tvrdení. Jednoduchá verzia pre tento repozitár je `lib/path_check.mjs`. |
+| `lib/doc_paths.mjs` | Overí, že cesta v pokynoch agenta ukazuje na existujúci súbor, a zastaví zrušené tvrdenia. | Počíta s našimi strojmi a zoznamom zrušených tvrdení. Jednoduchá verzia pre tento repozitár je [lib/path_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/path_check.mjs). |
 | `lib/retired_claims.txt` | Zoznam zrušených tvrdení. Riadok je regulárny výraz, tabulátor a dôvod. | Nesie mená našich agentov a zrušené veci. Formát si prevezmi. |
 | `lib/memory_claims.mjs` | Zastaví riadok pamäte agenta, ktorý tvrdí, že niečo čaká na operátora bez čísla úlohy, alebo spomína rozhodnutie bez čísla záznamu. | Viazaná na naše úlohy a pamäť agentov. |
 | `lib/rule_dupes.mjs` | Nájde pravidlá, ktoré hovoria to isté v lokálnych aj zdieľaných pravidlách. | Skript je prenosný, ale jeho test a zoznam výnimiek nesú naše mená, preto ho nekopírujeme. Postup je v kapitole 2 playbooku. |
@@ -89,26 +90,28 @@ Po klonovaní zapni hooky repa:
 git config core.hooksPath .githooks
 ```
 
-`pre-commit` aj `pre-push` spustia `node lib/public_check.mjs` a `node lib/path_check.mjs`. Ten prejde
-všetky súbory v gite a zlyhá kódom 1, keď nájde meno človeka, agenta, stroja,
+Repo nenesie žiadny kód. Kontroly žijú v repe agent-runtime a hooky ich volajú z jeho klonu, ktorý nájdu v `AGENT_RUNTIME`,
+inak vedľa tohto klonu v priečinku `agent-runtime`. Bez klonu skončia chybou a povedia, čo naklonovať.
+`pre-commit` aj `pre-push` zlyhajú, keď je v repe súbor `.mjs` alebo `.sh`, aby sa kópia kódu nevrátila. Spustia aj kontrolu
+[lib/public_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/public_check.mjs) a kontrolu [lib/path_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/path_check.mjs).
+Prvá prejde všetky súbory v gite a zlyhá kódom 1, keď nájde meno človeka, agenta, stroja,
 účtu alebo adresu zo vzorov v `lib/public_check.txt` (vzory sú v base64, aby
 zoznam mená nevyzrádzal). Riadok zoznamu začínajúci znakom `+` je povolený odkaz, takto prejdú odkazy na verejné repá projektu. `pre-push` skontroluje aj meno autora a správy
 commitov, ktoré idú von.
 
-`path_check.mjs` prejde všetky `*.md` v repe a zlyhá kódom 1, keď text v apostrofoch spomína cestu (`bin/`, `lib/`, `hooks/`,
+Druhá (`path_check.mjs`) prejde všetky `*.md` v repe a zlyhá kódom 1, keď text v apostrofoch spomína cestu (`bin/`, `lib/`, `hooks/`,
 `skills/`, `roles/`, `env/`, `global/`, `rozhodnutia/`, `artifacts/`, `runtime/`), ktorá v repe nie je a nie je v tabuľke
 "Čo v repe nie je". Vypíše súbor, riadok a cestu.
 
-Testy potrebujú Node 22 alebo novší:
+Kontroly potrebujú Node 22 alebo novší. Ručne ich spustíš z klonu agent-runtime s koreňom tohto repa:
 
 ```
-node --test 'lib/*.test.mjs'
-node lib/public_check.mjs
-node lib/path_check.mjs
+PUBLIC_CHECK_ROOT=$PWD PUBLIC_CHECK_LIST=$PWD/lib/public_check.txt node ../agent-runtime/lib/public_check.mjs
+PATH_CHECK_ROOT=$PWD node ../agent-runtime/lib/path_check.mjs
 ```
 
-Testy bežia v dočasných priečinkoch a živý Tasker ani schránky nevolajú. Testy hookov sú v repe agent-runtime
-(`node --test 'test/*.test.mjs'` v jeho klone).
+Testy skriptov a hookov sú v repe agent-runtime (`node --test` v jeho klone), bežia v dočasných priečinkoch a živý Tasker ani
+schránky nevolajú.
 
 ## Jazyk
 
@@ -119,7 +122,7 @@ Zdroj je po slovensky. Anglický preklad je v `PLAYBOOK.en.md` a `README.en.md`,
 Pošli pull request s mechanizmom: ako sa pravidlo zapíše, načíta, skontroluje
 alebo opraví, s testom, ktorý na chybe zlyhá. Pravidlá prevádzky konkrétneho
 operátora (kto smie čo, aké sú jeho zákazy) sem nepatria, tie si každý drží vo
-vlastnom repe. Pred pull requestom spusti `node lib/public_check.mjs`, `node lib/path_check.mjs` a testy.
+vlastnom repe. Pred pull requestom spusti kontroly z časti "Kontrola a testy" (hooky `pre-commit` a `pre-push` ich spustia samy).
 
 ## Licencia
 

@@ -164,7 +164,7 @@ správcu. Výstup je zmena, ktorá P nabudúce zachytí skôr, než nastane.
    chyby.
 4. Nasadí, kontrola prejde, commit a push, agentovi pošle commit a dôvod.
 5. Zopakuje scenár, v ktorom P vzniklo. Hotovo, keď P nenastane.
-6. Záznam rozhodnutia skriptom `bin/rozhodni.sh`: čo, prečo, z akej
+6. Záznam rozhodnutia skriptom [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh): čo, prečo, z akej
    chyby, kde je pravidlo.
 
 Cudzí plugin, ktorý P spôsobil, správca neopravuje. Vypne ho, zakáže, alebo

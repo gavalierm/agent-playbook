@@ -24,7 +24,9 @@ version. Chapter 12 is the order of work for the first week.
 
 The scripts without which the harness would not run (the waker, clean context, messages between agents, the task
 manager wrapper) live in the repo `https://github.com/gavalierm/agent-runtime`. The repo is public (D0171). Every mechanism is still described in a way that lets you build it
-without that link. The link is a path where you can read the finished code.
+without that link. The link is a path where you can read the finished code. The scripts for recording a decision and an
+acknowledged mistake, the rejection helper and the checks of this repo live there too, in its folders `bin/`, `lib/` and `test/`.
+This repo carries no code, only links to it.
 
 Paths are relative to the repo root unless stated otherwise. This repo is a cleaned copy of the private rules repo that
 runs in our operation. Paths in the "Our example" parts point into this repo where the file exists, and otherwise into
@@ -418,7 +420,7 @@ say that it replaces the old one. The power prevents an agent without a mandate 
 scope and power is in `rozhodnutia/ROZSAHY.md`, and the check enforces it. The file `INDEX.md` is a generated overview of
 all records and is not edited by hand.
 
-Writing goes one way. The script `bin/rozhodni.sh` assigns a number, writes the file, rewrites `INDEX.md`, commits under
+Writing goes one way. The script [bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh) assigns a number, writes the file, rewrites `INDEX.md`, commits under
 the agent's name and pushes. A hook that rejects every other write into the records runs before the tool is used. It
 catches a write through the file editing tool and a command in the shell, including `sed -i`, redirection and `tee`. The
 option `--dry-run` writes nothing, and the option `--zrus` (cancel) cancels a decision.
@@ -483,7 +485,7 @@ A cap of twelve sentences was rejected, because agents reached it regularly.
 
 The schema is in `rozhodnutia/README.md`, the tags in `rozhodnutia/ROZSAHY.md`. Sample records are `rozhodnutia/D0141.md`,
 `rozhodnutia/D0142.md` and `rozhodnutia/D0144.md`, which replaces `rozhodnutia/D0010.md`. Writing is done by
-`bin/rozhodni.sh`, the logic and the check by `lib/rozhodnutia.mjs` with the test `lib/rozhodnutia.test.mjs`. Cancelled
+[bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh), the logic and the check by [lib/rozhodnutia.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/rozhodnutia.mjs) with the test [test/rozhodnutia.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/rozhodnutia.test.mjs). Cancelled
 claims are read by `lib/doc_paths.mjs` from the file `lib/retired_claims.txt`, and the memory is checked by
 `lib/memory_claims.mjs`. The hooks are `hooks/rozhodnutia_guard.mjs` and `hooks/rozhodnutia_context.mjs`. The records D0010,
 D0141, D0142 and D0144, the scripts `lib/doc_paths.mjs` and `lib/memory_claims.mjs`, the list `lib/retired_claims.txt` and
@@ -531,7 +533,7 @@ mistake is replayed and the check is shown failing. A replay never touches a liv
 cannot fall back to a live path, mailbox or service. After a change of a value, option or path, the agent finds the old
 value with `grep -rn` and fixes every hit, also in documents and comments.
 
-The mechanical part is done by `bin/chyba.sh`. It takes the class of the mistake and the file that governs the behaviour,
+The mechanical part is done by [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh). It takes the class of the mistake and the file that governs the behaviour,
 and does four things.
 
 1. It rejects a file that is not committed, so the report carries the number of the fixing commit.
@@ -565,7 +567,7 @@ A fix of the type "I wrote it into a skill" is not approved.
    into a file that governs behaviour and that the check must fail on the mistake.
 2. In the persona add a section "Own mistake" ("Vlastná chyba") that refers to the global rule and carries short lines about
    incidents.
-3. Write `bin/chyba.sh` with the options `--trieda` (class), `--subor` (file), `--popis` (description), `--pravda` (what was
+3. Write [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh) with the options `--trieda` (class), `--subor` (file), `--popis` (description), `--pravda` (what was
    true), `--kontrola` (check). The register is a file with tabs outside the repo, for example
    `~/.local/state/<name>/chyby.tsv`. The script finds the commit with `git log -1 --format=%h -- <file>` and rejects a file
    with unsaved changes (`git status --porcelain -- <file>` is not empty).
@@ -583,7 +585,7 @@ A fix of the type "I wrote it into a skill" is not approved.
 6. Write a hook test with a conversation transcript from a real mistake. The test must fail when you turn the hook off.
 7. Give the task for the check at the second occurrence to the agent that manages the rules (chapter 7).
 
-Running it:
+Running it (the script is in the agent-runtime repo, in a clone next to your repo):
 
 ```
 bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
@@ -602,8 +604,8 @@ bin/chyba.sh --trieda neoverene-tvrdenie --subor PERSONA.md \
 
 ### Our example
 
-The mistake rules are in `global/CLAUDE.md`, §4, the accepted objection in §1. The script is `bin/chyba.sh`, the skill
-`skills/chyba/SKILL.md`, the hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), the tests `lib/chyba.test.mjs` and
+The mistake rules are in `global/CLAUDE.md`, §4, the accepted objection in §1. The script is [bin/chyba.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/chyba.sh), the skill
+`skills/chyba/SKILL.md`, the hook [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), the tests [test/chyba.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/chyba.test.mjs) and
 [test/objection_fix.test.mjs](https://github.com/gavalierm/agent-runtime/blob/main/test/objection_fix.test.mjs). The decision on the loop is `rozhodnutia/D0142.md`, a private record that is not in the repo
 (its content is in the table "What is not in the repo" in `README.md`). The improvement procedure is in
 `roles/spravca-agentov.md`, part "Improving agents" ("Zlepšovanie agentov"). The section "Own mistake" is shown by
@@ -730,8 +732,8 @@ Wiring:
 
 ### Our example
 
-The hooks are in the `hooks/` folder of the agent-runtime repo and their tests in its `test/` folder, not in this repo. The rejection helper is `lib/deny.mjs` (for git hooks
-`lib/deny.sh`), the guard is `lib/deny_check.mjs`, the decision is `rozhodnutia/D0141.md`. The wiring is done by the function
+The hooks are in the `hooks/` folder of the agent-runtime repo and their tests in its `test/` folder, not in this repo. The rejection helper is [lib/deny.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny.mjs) (for git hooks
+[lib/deny.sh](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny.sh)), the guard is [lib/deny_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/deny_check.mjs), the decision is `rozhodnutia/D0141.md`. The wiring is done by the function
 `settings` in `env/server/install.sh`, which are not in the repo (see the table "What is not in the repo" in `README.md`).
 The header comments of [hooks/reply_guard.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/reply_guard.mjs), [hooks/objection_fix.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/objection_fix.mjs), [hooks/todo_after_comment.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/todo_after_comment.mjs) and
 [hooks/tasker_work.mjs](https://github.com/gavalierm/agent-runtime/blob/main/hooks/tasker_work.mjs) describe what the hook enforces and what triggered it.

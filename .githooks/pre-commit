@@ -1,7 +1,23 @@
 #!/bin/bash
-# Pred commitom prejde všetky súbory repa na mená a adresy (lib/public_check.mjs)
-# a na odkazy na cesty, ktoré v repe nie sú (lib/path_check.mjs).
+# Pred commitom prejde všetky súbory repa na mená a adresy, odkazy na cesty
+# a súbory kódu. Repo kód nenesie: kontroly lib/public_check.mjs a lib/path_check.mjs
+# bežia z klonu agent-runtime (AGENT_RUNTIME, inak vedľa tohto klonu ../agent-runtime).
 # Zapnutie: git config core.hooksPath .githooks
 cd "$(git rev-parse --show-toplevel)" || exit 1
-node lib/public_check.mjs || exit 1
-node lib/path_check.mjs || exit 1
+root="$PWD"
+runtime="${AGENT_RUNTIME:-$root/../agent-runtime}"
+for f in lib/public_check.mjs lib/path_check.mjs; do
+    if [ ! -f "$runtime/$f" ]; then
+        echo "Chýba $runtime/$f: naklonuj https://github.com/gavalierm/agent-runtime vedľa tohto klonu alebo nastav AGENT_RUNTIME." >&2
+        exit 1
+    fi
+done
+code="$(find . -path ./.git -prune -o -path ./.githooks -prune -o \( -name '*.mjs' -o -name '*.sh' \) -print)"
+if [ -n "$code" ]; then
+    echo "Repo nenesie kód, súbor patrí do https://github.com/gavalierm/agent-runtime a tu odkaz naň:" >&2
+    echo "$code" >&2
+    exit 1
+fi
+export PUBLIC_CHECK_ROOT="$root" PUBLIC_CHECK_LIST="$root/lib/public_check.txt" PATH_CHECK_ROOT="$root"
+node "$runtime/lib/public_check.mjs" || exit 1
+node "$runtime/lib/path_check.mjs" || exit 1
