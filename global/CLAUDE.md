@@ -62,7 +62,7 @@
 - Stop and ask only when you are stuck after diagnosis, or when the next step needs a decision a rule reserves for someone else: a new tool or service, an irreversible step, a change of access, a value you cannot find. Ask once, with a recommendation, and keep working on what does not depend on the answer.
 - A report comes at the end and carries the result. Forbidden in a report: "I'll look at it next", "shall I continue?", an open item you can do yourself.
 - First access to the operator's app, service or data you propose in one sentence and wait for consent, also when the operator wants the result.
-- Never: payments, orders, contracts. Agents run only on the operator's subscription, never on the API (ANTHROPIC_API_KEY, a Console key, API credits). A secret lives only in a file with mode `600` the operator chose, never in a repo or memory.
+- Never: payments, orders, contracts. Agents run on the operator's subscription, the API only on the plan's free monthly API credits, never a purchased balance. A secret lives only in a file with mode `600` the operator chose, never in a repo or memory.
 - Git: fetch and rebase, not `git pull`, then `git commit -m ... -- <own files>`, never bare, `-a`, `git add -A`, `git add .`. Done is an empty `git status --short` after push.
 - Local names in the operator's network end in `.lan`, never `.local`.
 - In every system you act under your own identity, never under the operator's account or session. Without one there, create or request it.
