@@ -1,9 +1,8 @@
 # Rozhodnutia
 
-Jeden súbor na rozhodnutie, `D0001.md` a ďalej. Píše ich len
-[bin/rozhodni.sh](https://github.com/gavalierm/agent-runtime/blob/main/bin/rozhodni.sh), číta [lib/rozhodnutia.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/rozhodnutia.mjs) (`list`, `show`, `check`,
-`index`). `INDEX.md` generuje skript, ručne ho neupravuj. Značky rozsahu sú
-v `ROZSAHY.md`. Návrh a dôvody sú v úlohe Taskera 390.
+Jeden súbor na rozhodnutie, `D-0001` a ďalej. Píše ich iba skript skillu
+uloženia, ručne sa nezapisujú. Index generuje skript lokálne, ručne ho
+neupravuj. Opis a dôvody sú v kapitole 4 playbooku.
 
 ## Záznam
 
@@ -11,28 +10,23 @@ Hlavička je zoznam `kľúč: hodnota` medzi dvoma riadkami `---`, potom telo.
 
 | pole | význam |
 |---|---|
-| `id` | `D` a štyri číslice, rovná sa menu súboru |
-| `nazov` | jedna veta, čo platí |
-| `stav` | `platí`, `nahradené`, `zrušené` |
-| `kluc` | bodková cesta jednej veci, medzi platnými záznamami jedinečná |
-| `rozsah` | značky z `ROZSAHY.md` |
-| `agenti` | mená agentov z `roles/agents.md` malými písmenami, alebo `*` |
-| `rozhodol`, `moc` | kto rozhodol a akou mocou |
-| `zapisal`, `datum` | kto záznam zapísal a kedy |
-| `zdroj` | kde to zaznelo: vlákno, správa, úloha. Číslo riadku v `DECISIONS.md` a `SCHVALENE.md` archívov (v súkromnom repe prevádzky) platí pre stav pred hlavičkou archívu, ktorá pridala 4 riadky: `git show <commit hlavičky>~1:DECISIONS.md` |
-| `uloha` | číslo úlohy Taskera, keď otázka išla cez `needs_human` |
-| `nahradza`, `nahradene` | odkazy medzi záznamami, obe strany ukazujú na seba |
-| `alias` | staré číslo R alebo nadpis, `R153.sandbox` pre rozdelené R |
-| `subory` | súbory repa, ktoré rozhodnutie stelesňujú, tie musia existovať |
-| `zrusene-tvrdenie` | regulárny výraz vety, ktorá po zmene nesmie nikde stáť |
+| `id` | `D-` a štyri číslice, pridelí skript |
+| `title` | jedna veta, čo sa rozhodlo |
+| `what` | čo platí |
+| `alternatives` | zamietnuté alternatívy |
+| `reason` | dôvod |
+| `status` | `platí`, alebo `nahradené` s ID nového záznamu |
+| `relates_to` | vec, ktorej sa rozhodnutie týka: cesta súboru, téma alebo názov postupu |
+| `supersedes` | ID záznamu, ktorý tento nahrádza |
 
-Telo má najviac päť viet: čo platí, dôvod, čo bolo zamietnuté. História je
-v gite. Súbor sa nemaže, zmena stavu je commit.
+Telo má najviac päť viet. História je v gite. Súbor sa nemaže, rozhodnutie
+sa len nahrádza novým záznamom.
 
-## Príkazy
+## Pravidlá
 
-- `node lib/rozhodnutia.mjs list --agent beta --rozsah server` vypíše platné
-  záznamy pre agenta. Záznamy stelesnené v pravidle (`subory` v `global/`,
-  `roles/`, persone) ukáže až `--vsetky`.
-- `node lib/rozhodnutia.mjs show D0007` alebo `show R153` (alias).
-- `bin/rozhodni.sh --dry-run ...` vypíše záznam a nezapíše nič.
+- Zapisuje sa rozhodnutie, pri ktorom existovala reálna alternatíva a dôvod
+  nie je zrejmý z výsledku.
+- Commit, ktorý rozhodnutie realizuje, nesie v správe jeho ID.
+- Pred zmenou veci, ktorej sa týka platné rozhodnutie, si ho agent prečíta.
+- Poznámka v rozhovore nie je rozhodnutie. Zapíše sa po súhlase operátora
+  na text.
