@@ -42,7 +42,7 @@ cestu k agentom a ich beh spravuje správca agentov.
   a `mv`. Budič `runtime/driver.mjs` súkromného repa správcu agentov doručí správu do
   vlákna ako `<schranka od=... id=... odpoveď=...>` a presunie ju do
   `processed`. Odpoveď ide príkazom z hlavičky správy, `AGENT_NAME=<meno>
-  /root/<správca agentov>/runtime/reply.sh <id>`, do `/var/lib/<meno>/outbox`.
+  /root/<správca agentov>/runtime/reply.sh <id>`, do `inbox` odosielateľa pôvodnej správy.
 - Prvý riadok správy `odpoveď: ...` píšu skripty, nie model, a hovorí, čo
   odosielateľ čaká (`runtime/README.md` súkromného repa správcu agentov, časť Budenie):
 

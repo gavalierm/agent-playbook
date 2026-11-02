@@ -32,7 +32,7 @@ mistakes, and yours will be different.
 The private operations repo carries things tied to one operator. It contains names of people, agents, machines and accounts,
 addresses, agent personas and the runtime of the agent manager (the waker, mailboxes). So they are not carried over. The
 runtime lives in the repo `https://github.com/gavalierm/agent-runtime` (public, D0171). The references to them in
-`PLAYBOOK.en.md` stayed, and they point into the private operations repo or into the runtime repo. The other files that the text mentions and that are not here are described by this table. The placeholder pattern
+`PLAYBOOK.en.md` stayed, and they point into the private operations repo or into the runtime repo. The other files that the text mentions and that are not here are described by this table or by the hooks, bin and lib directories of the agent-runtime repo listed in the table above. The placeholder pattern
 `rozhodnutia/D0xxx.md` means any decision record. The check [lib/path_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/path_check.mjs) fails when a text mentions a path that is
 not in the repo and not in the table.
 

@@ -33,7 +33,7 @@ sú odpoveďou na naše chyby a tvoje budú iné.
 Súkromné repo prevádzky nesie veci viazané na jedného operátora. Sú v ňom mená ľudí, agentov, strojov a účtov, adresy,
 persony agentov a runtime správcu agentov (budič, schránky). Preto sa neprenášajú. Runtime žije v repe
 `https://github.com/gavalierm/agent-runtime` (verejné, D0171). Odkazy na ne v `PLAYBOOK.md`
-ostali, ukazujú do súkromného repa prevádzky alebo do repa runtime. Ostatné súbory, ktoré text spomína a ktoré tu nie sú, opisuje táto tabuľka.
+ostali, ukazujú do súkromného repa prevádzky alebo do repa runtime. Ostatné súbory, ktoré text spomína a ktoré tu nie sú, opisuje táto tabuľka alebo adresáre `hooks`, `bin` a `lib` repa agent-runtime z tabuľky vyššie.
 Zástupný vzor `rozhodnutia/D0xxx.md` znamená ľubovoľný záznam rozhodnutia. Kontrola [lib/path_check.mjs](https://github.com/gavalierm/agent-runtime/blob/main/lib/path_check.mjs) zlyhá, keď text
 spomenie cestu, ktorá v repe nie je a nie je v tabuľke.
 
