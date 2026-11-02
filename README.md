@@ -29,10 +29,26 @@ a tvoje budú iné.
 | `rozhodnutia/README.md` | schéma záznamu rozhodnutia |
 | `lib/public_check.txt` | zoznam vzorov mien a adries pre kontrolu verejného repa, vzory sú v base64 |
 
+## Otvorené repá
+
+Implementácia opísaná v návode je zverejnená v samostatných repách pod licenciou
+MIT (súbor `LICENSE` v každom z nich). Sú to očistené snapshoty vydaných verzií
+súkromných vývojových repozitárov: mená ľudí, agentov, strojov a domén sú
+nahradené zástupnými (Alice, Bob, Carol, `example.com`) a história súkromných
+repozitárov sa neprenáša. Snapshoty sa obnovujú pri vydaní novej verzie.
+
+| repo | čo to je |
+|---|---|
+| https://github.com/gavalierm/agentic-flow-open | workflow: plugin Claude Code s pravidlami, skillmi, hookmi a skriptmi brain |
+| https://github.com/gavalierm/agentic-comms-open | poštová a budiaca služba |
+| https://github.com/gavalierm/agentic-brain-template | šablóna brain (dáta jednej persony alebo projektu) |
+| https://github.com/gavalierm/agent-template | šablóna agenta: repo je zároveň brain (`"brain": "."`) |
+
+Tento repo (`agent-playbook`) ostáva bez kódu: návod a ukážky.
+
 ## Čo v repe nie je
 
-Implementácia workflow a poštovej služby je v súkromných repách, preto tu nie je
-žiadny kód ani skript. Nie je tu ani brain konkrétneho operátora: sú v ňom mená
+Kód a skripty sú v otvorených repách vyššie, preto tu nie sú. Nie je tu ani brain konkrétneho operátora: sú v ňom mená
 ľudí, agentov, strojov a účtov, adresy, persony, pamäť, záznamy rozhodnutí
 a logy. Z tohto repa si zober mechanizmy z kapitol a ukážky pravidiel a rolí.
 Kód, ktorý ich vynucuje, napíšeš podľa kapitol a vlastného runtime.

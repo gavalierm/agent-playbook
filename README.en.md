@@ -29,10 +29,27 @@ answers to our mistakes, and yours will be different.
 | `rozhodnutia/README.md` | schema of a decision record |
 | `lib/public_check.txt` | list of name and address patterns for the public repo check, patterns are in base64 |
 
+## Open repositories
+
+The implementation described in the guide is published in separate repositories
+under the MIT license (a `LICENSE` file in each). They are sanitized snapshots of
+released versions of private development repositories: names of people, agents,
+machines and domains are replaced by placeholders (Alice, Bob, Carol,
+`example.com`), and the history of the private repositories is not carried over.
+The snapshots are refreshed when a new version is released.
+
+| repo | what it is |
+|---|---|
+| https://github.com/gavalierm/agentic-flow-open | the workflow: a Claude Code plugin with rules, skills, hooks and brain scripts |
+| https://github.com/gavalierm/agentic-comms-open | the mail and wake-up service |
+| https://github.com/gavalierm/agentic-brain-template | a brain template (the data of one persona or project) |
+| https://github.com/gavalierm/agent-template | an agent template: the repo is its own brain (`"brain": "."`) |
+
+This repo (`agent-playbook`) stays free of code: the guide and the samples.
+
 ## What is not in the repo
 
-The implementation of the workflow and the mail service is in private repos, so
-there is no code or script here. There is also no brain of a particular operator:
+Code and scripts are in the open repositories above, so they are not here. There is also no brain of a particular operator:
 it holds names of people, agents, machines and accounts, addresses, personas,
 memory, decision records and logs. Take the mechanisms from the chapters and the
 samples of rules and roles from this repo. The code that enforces them you write
