@@ -9,7 +9,7 @@ plugin a nič sa z neho neinštaluje.
 
 ## Kde začať
 
-Prečítaj `PLAYBOOK.md`. Každá kapitola má problém, časť Kedy to potrebuješ, mechanizmus, kroky bez nášho kódu, čo vyžaduje od runtime
+Prečítaj `PLAYBOOK.md`. Kapitoly 1 až 12 stavajú jedného agenta s pravidlami, rozhodnutiami a kontrolou. Časť B (kapitoly 13 až 17) opisuje súčasnú podobu nášho systému s témami, workflow ako pluginom, poštovou službou a budením vlákien v T3 Code. Každá kapitola má problém, časť Kedy to potrebuješ, mechanizmus, kroky bez nášho kódu, čo vyžaduje od runtime
 a odkaz na náš príklad v tomto repe. Skopíruj mechanizmy, nie naše pravidlá. Pravidlá
 sú odpoveďou na naše chyby a tvoje budú iné.
 

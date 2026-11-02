@@ -14,11 +14,12 @@ ktorý sa pri štarte načíta, a kontrola, ktorá zlyhá, keď agent pravidlo p
 Systém preto stojí na troch veciach. Pravidlá a rozhodnutia sú súbory v gite. Chybu uznanú operátorom sprevádza zmena
 súboru, ktorý správanie riadi. Čo sa dá skontrolovať strojom, kontroluje hook alebo skript, nie dobrá vôľa modelu.
 
-Každá kapitola 1 až 11 má rovnakú stavbu. Problém hovorí, čo sa bez mechanizmu pokazí, aj pre čitateľa, ktorý náš
+Každá kapitola 1 až 11 a 13 až 16 má rovnakú stavbu. Problém hovorí, čo sa bez mechanizmu pokazí, aj pre čitateľa, ktorý náš
 systém nepozná. Kedy to potrebuješ hovorí, kedy mechanizmus nestavať. Mechanizmus opisuje, ako to funguje. Ako to
 postaviť dáva kroky, formát súboru a príklad, bez nášho kódu. Čo od runtime vyžaduje vymenúva, čo musí vedieť nástroj,
 v ktorom agent beží. Náš príklad ukazuje cesty v tomto repe, kde si hotovú verziu prečítaš. Kapitola 12 je poradie práce
-na prvý týždeň.
+na prvý týždeň. Kapitoly 13 až 17 (časť B) opisujú súčasnú podobu nášho systému: témy, workflow ako plugin, poštovú
+službu a budenie vlákien. Staviaš nový systém? Po kapitolách 1 až 6 pokračuj časťou B.
 
 Skripty, bez ktorých by harness nebežal (budič, čistý kontext, správy medzi agentmi, obal správcu úloh), žijú v repe
 `https://github.com/gavalierm/agent-runtime`. Repo je verejné (D0171). Každý mechanizmus je aj tak opísaný tak, aby si ho postavil bez
@@ -65,6 +66,16 @@ načíta, skontroluje a opraví.
 | blokér | väzba "táto úloha stojí na tamtej" s povinným dôvodom, po uzavretí tamtej sa táto odblokuje |
 | čistý kontext | nová relácia bez rozhovoru, ktorú agent začne z toho, čo je zapísané v súboroch a v správcovi úloh |
 | odovzdávka | malý súbor so súhrnom stavu a ďalším krokom, ktorý agent zapíše pred čistením a ktorý sa vloží do novej relácie |
+| téma | jednotka práce časti B: meno, predmet jednou vetou, druh (kódová alebo diskusná), držiteľ a handover |
+| držiteľ | vlákno, ktoré tému práve vedie, naraz najviac jedno, zapísané v súbore témy |
+| handover | jeden súbor na tému, najviac 15 riadkov (Zadanie, Hotové, Ďalší krok, Súbory, Otvorené otázky) |
+| brain | git repo s dátami persony alebo projektu: pravidlá, pamäť, rozhodnutia, skilly, logy a témy |
+| workflow | plugin s mechanikou: skripty, hooky, skilly a šablóna brain, bez dát inštancie |
+| pošta | samostatná služba na správy medzi témami a agentmi s kľúčmi, tromi úrovňami a lehotami |
+| úroveň správy | `blocker`, `steer` alebo `assist`, podľa toho, ako odosielateľa blokuje odpoveď |
+| zvonček | pevný prompt, ktorým budenie zobudí vlákno držiteľa (nikdy telo správy) |
+| hlavné vlákno | trvalá téma `main` persony, ktorá triedi poštu a hlásenia |
+| pilot | oddelený projekt s vlastným brain, v ktorom sa zmena workflow overí pred vydaním |
 
 ### Predpoklady
 
@@ -1391,3 +1402,355 @@ Dôvody v tomto playbooku vychádzajú z praxe na jednom serveri s jedným oper�
 `clear_bridge.mjs` sú viazané na náš runtime. Kapitoly 7, 8 a 11 opisujú ich stavbu tak, aby si ich postavil bez nášho
 kódu. Náš kód je v repe `https://github.com/gavalierm/agent-runtime` (verejné, D0171). Zvyšok je prenosný hneď, teda persona v gite, register rozhodnutí, slučka chyby, hooky so správnym postupom
 a úloha so stavmi.
+
+Chceš viac paralelných tém, poštovú službu a budenie vlákien? Pokračuj časťou B (kapitoly 13 až 17).
+
+## Časť B: systém s témami, poštovou službou a vláknami
+
+Kapitoly 13 až 17 opisujú podobu, v ktorej náš systém beží dnes: workflow ako plugin (verzia 0.7.0), poštovú službu
+(verzia 0.4.0) a vlákna v T3 Code. Kapitoly 7, 8 a 11 opisujú staršiu, jednoduchšiu podobu so správcom úloh a súborovými
+schránkami. Nový systém stavaj podľa kapitol 13 až 17. Kapitoly 1 až 6, 9 a 10 platia v oboch podobách, len v časti B
+ich vykonáva workflow (skripty, hooky a skilly v jednom plugine) namiesto ručne zapojených súborov.
+
+Implementácia workflow a pošty žije v súkromných repách. Preto je každá kapitola napísaná tak, aby si ju postavil bez
+nášho kódu: opisuje súbory, kroky, príkazy a hranice, nie zdrojový text.
+
+## 13. Téma ako jednotka práce
+
+### Problém
+
+Relácia je dočasná: zanikne pri čistení kontextu, kompakcii, páde alebo reštarte servera. Práca, ktorá ju prežije, potrebuje
+nositeľa, ktorý nie je relácia. Keď nositeľ chýba, platí toto. Dve vlákna robia tú istú vec a prepíšu si zmeny. Nová relácia
+nevie, čo je hotové. Paralelné zmeny kódu sa miešajú v jednom klone. Agent sa pýta operátora na veci, ktoré mal
+rozhodnúť sám, a operátor nevie, kto čo drží.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď jeden agent (persona) vedie viac samostatných vecí súbežne, keď na jednej veci pracuje postupne viac
+relácií, alebo keď si agenti odovzdávajú prácu. Pri jednom agentovi a jednej veci stačí postup z kapitoly 12.
+
+### Mechanizmus
+
+Systém má tri repá. Workflow je mechanika (skripty, hooky, skilly, šablóny), nesie dáta žiadnej inštancie. Brain sú dáta
+jednej persony alebo projektu: pravidlá, pamäť, rozhodnutia, výnimky, skilly, logy a témy. Projekt je kód. Brain je samostatné
+git repo vedľa projektu a persona je brain, ktorý nemá projekt.
+
+Téma je jednotka práce. Má meno z malých písmen, číslic a pomlčiek a predmet, teda jednu vetu, o ktorej sa dá rozhodnúť,
+či doňho vec patrí alebo nepatrí. Je buď kódová (mení kód), alebo diskusná. Stav je `working` alebo `free`. V brain má
+priečinok témy s tromi súbormi: popis témy (meno, predmet, druh, stav), záznam držiteľa a handover. Všeobecné témy typu
+"rôzne" sú zakázané, lebo téma bez rozhodnuteľného predmetu nemá adresu.
+
+Držiteľ je vlákno, ktoré tému vedie. Naraz ju drží najviac jedno. Zabratie urobí skript v poradí: fetch brain, kontrola
+záznamu držiteľa, zápis držiteľa, commit, okamžitý push. Rozhoduje obsah záznamu po fetch, odmietnutý push nie je dôkaz,
+že tému drží niekto iný: skript fetchne znova a overí. Držiteľ nesie identitu vlákna zo stabilného ID, ktoré dodá
+prostredie (v T3 Code premenná s ID vlákna, mimo neho spúšťač, ktorý ID vygeneruje). ID relácie nástroja ani PID sa
+nepoužijú, lebo sa menia. Vlákno bez stabilného ID tému nezaberie. Prevzatie témy od iného držiteľa smie nariadiť len
+operátor a skript ho odmietne bez jeho výslovného potvrdenia. Pôvodný držiteľ sa pri ďalšom zápise zastaví. Nečinnosť
+držiteľa nie je dôvod na prevzatie. Subagent tému nikdy nedrží.
+
+Držiteľ má režim `operator` (predvolený: blocker pre operátora čaká na jeho rozhodnutie) alebo `auto` (agent blocker rieši
+sám cez pracovníka).
+
+Kódová téma pracuje vo vlastnej kópii kódu, samostatnom klone vedľa projektu na vetve s menom témy. V hlavnej vetve
+projektu sa nič nemení. Výsledok sa do nej dostane len uzavretím témy po zlúčení a overení. Kópia je samostatný klon, nie worktree.
+
+Handover je presne jeden na tému a jeho kľúčom je téma, nie relácia. Má najviac 15 riadkov v sekciách Zadanie, Hotové,
+Ďalší krok, Súbory a Otvorené otázky. Agent ho prepíše po každej zmene stavu a vždy pred čistením kontextu. Pri prevzatí
+témy porovná "Hotové" so súbormi a pri rozchode sa zastaví a spýta.
+
+Hlavné vlákno persony drží trvalú tému `main` s adresou `<persona>/main`. Triedi poštu a hlásenia, vedie ostatné témy
+a nikdy sa neuzavrie ani neuvoľní. Tému `main` nezaberie nikto iný bez pokynu operátora.
+
+Pokračovanie je pravidlo, nie zvyk. Ďalší krok z handoveru nie je dôvod skončiť ťah: agent ho urobí. Skončí len
+blockerom (chýba vstup, ktorý má len operátor, krok presahuje zadanie alebo pravomoc, pravidlo vyžaduje súhlas, voľba závisí
+od priority operátora) alebo budíkom na vonkajšiu udalosť. Otázka operátorovi mimo blockera je zakázaná.
+
+Uzavretie má dve podoby. Uzavretie jednotky práce overí výsledok jedným pozorovaním, zapíše handover a tému nechá
+otvorenú. Uzavretie celej témy zlúči kópiu kódu do hlavnej vetvy, tému archivuje, uvoľní adresu v pošte a vlákno sa
+archivuje. Hlavné vlákno sa neuzatvára.
+
+### Ako to postaviť
+
+1. Založ tri repá: workflow, brain (vedľa projektu) a projekt. Do brain daj priečinky pravidiel, pamäte, rozhodnutí,
+   výnimiek, skillov, logov a tém. V projekte daj malý konfiguračný súbor s relatívnou cestou k brain.
+2. Napíš skript témy s príkazmi: založenie (meno, predmet, druh), zabratie, uvoľnenie, zoznam otvorených tém, stav
+   vlákna, kópia kódu. Zabratie robí poradie fetch, kontrola, zápis, commit, push a po neúspechu overenie obsahu.
+3. Zaveď stabilné ID vlákna z prostredia a odmietni zabratie bez neho. V ťahu spustenom správou (kapitola 15) zabratie
+   odmietni tiež.
+4. Zapíš šablónu handoveru s piatimi sekciami a limitom 15 riadkov. Skript zápisu odmietne dlhší.
+5. Pri štarte relácie vlož do kontextu zoznam otvorených tém, jeden riadok o tom, ktorú tému vlákno drží, a pri novej
+   relácii bez témy nechaj agenta tému vybrať alebo založiť.
+6. Pre kódové témy napíš kopírovanie projektu do samostatného klonu s vetvou témy a pravidlo, že kód sa mení len tam.
+7. Uzavretie jednotky a uzavretie témy napíš ako dva príkazy. Uzavretie témy odmietni, kým kópia nie je zlúčená a
+   overená, a v ťahu spustenom správou ho odmietni tiež.
+8. Napíš pravidlá pokračovania a blockera (časť Mechanizmus) do pravidiel brain.
+
+### Čo od runtime vyžaduje
+
+- Stabilné ID vlákna dostupné skriptom a hookom.
+- Hook na štart relácie, ktorý vie vložiť text do kontextu.
+- Spôsob premenovať a archivovať vlákno z agenta (v T3 Code nástroje na prácu s vláknami).
+- Git s možnosťou pushu do brain z každého stroja, kde vlákna bežia.
+
+### Náš príklad
+
+Implementácia je v súkromnom repe workflow, princípy témy, držiteľa, handoveru a identity vlákna sú v jeho dokumente
+princípov. Tu nemáš kód, máš opis vyššie. Rozhodnutie "klon namiesto worktree" je v časti Mechanizmus.
+
+## 14. Workflow ako plugin: brain, zápis, pravidlá, hooky
+
+### Problém
+
+Pravidlá napísané ako text si agent pamätá nespoľahlivo, ručne zapojené hooky sa rozídu medzi projektmi a zápisy do
+spoločných dát robí každý agent po svojom. Výsledkom sú duplicitné poznámky, pravidlá bez vynucovania a súbory, ktoré si
+agenti navzájom prepisujú.
+
+### Kedy to potrebuješ
+
+Potrebuješ to od druhého agenta alebo druhého projektu, keď ťa prestane baviť ručne synchronizovať pravidlá, hooky
+a skilly. Pri jednom agentovi stačia kapitoly 1 až 6 spísané ručne.
+
+### Mechanizmus
+
+Workflow je plugin pre runtime agenta, ktorý sa zapína v projekte, nie globálne. Z jedného súboru politiky generuje
+nastavenia projektu pre konkrétny runtime (adaptér pre Claude Code, adaptér pre Codex). Politika nesie zakázané cesty,
+vypnutie natívnej pamäte, zoznam hookov, limity a šablóny zvončekov. Do nastavení používateľa plugin nezapisuje nič.
+Vynucovanie má poradie: najprv nastavenie runtime, potom hook a až nakoniec textové pravidlo. Pravidlo, ktoré agent
+opakovane poruší, sa musí vynútiť hookom.
+
+Zápis do brain má jeden vstupný bod: skill uloženia. Agent klasifikuje obsah stromom a skript ho zapíše.
+
+| čo je to | kam ide |
+|---|---|
+| postup s krokmi | skill |
+| mení správanie | pravidlo (iba príkaz alebo zákaz, kroky patria do skillu) alebo výnimka |
+| voľba s reálnou alternatívou | rozhodnutie, ktoré sa nemaže, len nahrádza |
+| obsah pre projekt | dokument projektu |
+| stav práce | handover témy |
+| všetko ostatné | pamäť podľa subjektu, prepisuje sa, neduplikuje |
+
+Skript zapisuje do brain cez zámok klonu, commit nesie značku skriptu a git hook v brain odmietne commit bez nej.
+Po zápise skript skúsi push. Keď sa ten istý súbor zmenil na oboch stranách, nič sa neskladá automaticky. Každá vec je
+samostatný súbor, indexy sa generujú lokálne a necommitujú sa. Pamäť nesie pôvod: `operator` sa neoveruje, `derived`
+sa overuje odtlačkom zdrojov, `observed` sa overí pred nevratnou akciou. Platný údaj sa nemaže kvôli limitu. Pri prekročení
+limitu indexu alebo pravidiel agent po dokončení jednotky práce spustí konsolidáciu.
+
+Pravidlá sa skladajú z vrstiev (jadro, runtime, stroj, projekt, lokálne), najkonkrétnejšia vyhráva. Výnimka z pravidla
+je záznam s ID princípu, ktorý porušuje. Niektoré princípy sú nemenné (ochrana dát, rozsah zadania, jediný zapisovač).
+Zostavené pravidlá majú limit 200 riadkov a 10 000 znakov.
+
+Štart relácie vloží pevný zoznam: pravidlá, skilly, stavový riadok, index pamäte, index rozhodnutí, otvorené témy
+a verziu workflow. Spolu najviac 15 000 znakov. Počas relácie hook do kontextu vkladá len stavový riadok (vlákno, téma
+a jej režim, počet čakajúcich správ) a signál najviac dvoch riadkov. Zmena pravidiel platí od ďalšieho ťahu.
+
+Agent má dve roly. Hlavný agent zapisuje do brain, drží tému a hovorí s operátorom. Pracovník (subagent) rieši prieskum
+a ohraničené úlohy bez znalosti workflow, nič nezapisuje, tému nedrží a nehovorí s operátorom. Zadanie mu skladá skript
+z úlohy a pribalených skillov a nesie cestu pre pracovné súbory. Pracovník beží na lacnom modeli (vyšší len s dôvodom
+pri náročnej syntéze) a vráti záver do 2 000 znakov so sekciou "Failures". Hlavný agent výsledok namátkovo overí.
+
+Chyba sa stáva skillom (kapitola 5), a to aj chyba pracovníka: poučenia idú dole do zadania, chyby hore do hlavného agenta.
+Každú chybu agent nahlási správcovi workflow. Ochrana dát: bezpečné je len to, čo obnoví git. Mazanie a prepisovanie
+nesledovaných súborov vyžaduje potvrdenie operátora so zoznamom cieľov. Zamietnutý príkaz sa neobchádza iným príkazom s rovnakým účinkom.
+
+Vydanie má dve vetvy: `dev` pre vývoj a `main` pre stabilný stav s tagmi vX.Y.Z. Stabilný klon plugin
+používa z tagu, vývojový klon sa načíta premennou prostredia v procese, ktorý spúšťa relácie. Skill kontroly porovná verziu zo štartu s nainštalovanou a podľa toho aktualizuje. Zmenu workflow robí správca
+vo vetve `dev`, stabilný stav sa prepne až po prejdených testoch.
+
+Pilot je oddelený projekt s vlastným brain, v ktorom sa zmena overí pozorovaním (správanie vlákien sa unit testom
+overiť nedá) skôr, než sa vydá. Pred testom sa pilot zosynchronizuje na aktuálnu verziu a vlákna sa pripravia bez
+otázok na operátora. Kritériá úspechu: aspoň dve kódové témy bežia súbežne, jedna diskusná téma prejde od založenia po
+uzavretie, štartovací kontext ostane pod limitom a nič sa nezapíše mimo troch repozitárov pilota. Návrat je vypnutie pluginu
+v projekte.
+
+### Ako to postaviť
+
+1. Napíš plugin s priečinkami pre adaptéry, hooky, skilly, šablónu brain a súborom politiky. Manifest ho nechá
+   predvolene vypnutý.
+2. Napíš adaptér, ktorý z politiky vygeneruje nastavenia projektu. Nikdy ich nepíš ručne.
+3. Napíš skript zápisu do brain so zámkom klonu, značkou commitu a git hookom brain. Skill uloženia nech nesie
+   strom z časti Mechanizmus.
+4. Zostav pravidlá z vrstiev a skontroluj limity pri každom zostavení.
+5. Napíš hook štartu so pevným zoznamom a hook prompt, ktorý vkladá len stavový riadok a signál. Pridaj hook
+   PreToolUse, ktorý vynucuje zakázané cesty, zamietnutie čakania v popredí nad 10 sekúnd a zamietnutie správy do cudzieho
+   vlákna (kapitola 15).
+6. Napíš pracovníka a skript zadania. Hook konca pracovníka vráti výsledok bez sekcie "Failures".
+7. Zaveď kanály vydania: `main` s tagmi, stabilný klon, vývojový klon cez premennú procesu.
+8. Založ pilot a podľa jeho kritérií overuj každú zmenu skôr, než ju vydáš.
+
+### Čo od runtime vyžaduje
+
+- Hooky na štart, prompt, pred a po nástroji, koniec odpovede a koniec subagenta.
+- Dá sa vypnúť natívna pamäť a zakázať zápis do vybraných ciest nastavením.
+- Spôsob načítať plugin z priečinka podľa premennej prostredia.
+- Subagent, ktorému sa dá zadať model a ktorý nedostane pravidlá hlavného agenta.
+
+### Náš príklad
+
+Skilly workflow: uloženie, téma, uzavretie, pošta, delegovanie, chyba, hľadanie, konsolidácia, kontrola a shell. Kapitola
+zhŕňa ich účel, kód nie je súčasťou tohto repa. Skill chyby z kapitoly 5 ukazuje `skills/chyba/SKILL.md`.
+
+## 15. Pošta ako služba
+
+### Problém
+
+Súborové schránky (kapitola 8) vyžadujú, aby každý odosielateľ mal zápis do cudzích adresárov, nevedia povedať, kto správu
+naozaj poslal, a nevedia dohliadať na lehoty. Správa zapísaná priamo do vlákna iného agenta preruší jeho ťah. Telo správy
+s pokynom sa zas ľahko zamieňa s pokynom operátora.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď súbežne pracuje viac tém alebo agentov, ktorí si posielajú prácu, otázky a výsledky. Pri jednom agentovi
+a jednej téme poštu nestavaj.
+
+### Mechanizmus
+
+Pošta je samostatná služba. Odosielateľ potrebuje jej adresu a svoj kľúč, nie klon ani zápis do cudzieho repa. Každá
+požiadavka okrem kontroly zdravia vyžaduje kľúč (aj na lokálnom sockete) a odosielateľa určí služba podľa kľúča, nie podľa
+textu správy. Správa je jeden súbor, ktorý zapisuje len služba. Služba beží na požiadanie pri prvom volaní, alebo
+trvalo za reverzným proxy. Na jednom stroji môže bežať viac nezávislých inštancií, každá s vlastným dátovým priečinkom,
+kľúčmi a lokálnym socketom bez spoločného portu.
+
+Adresa správy je projekt a téma, alebo persona (a prípadne projekt a téma). Hlavné vlákno persony má adresu
+`<persona>/main`. Téma sa v pošte zaregistruje pri zabratí a pošta nemá vlastnú evidenciu držiteľov: berie ich zo záznamu
+témy. Správa pre neregistrovanú tému sa pozdrží a vznikne oznam operátorovi "nová téma / presmeruj". Odosielateľ dostane
+rovnakú odpoveď ako pri doručení, takže z nej nepozná, či téma existuje. Súkromné témy doručí len vlastníkovi.
+
+Úroveň správy určuje odosielateľ podľa toho, ako ho odpoveď blokuje.
+
+| úroveň | význam | lehota na prevzatie |
+|---|---|---|
+| `blocker` | odosielateľ bez odpovede nemôže pokračovať, končí ťah a odpoveď ho zobudí | 5 minút |
+| `steer` | držiteľ cieľovej témy má hneď zastaviť prácu na nej, doručí sa aj do bežiaceho ťahu | 5 minút |
+| `assist` | odosielateľ pokračuje inou prácou, odpoveď ho zobudí | 30 minút |
+
+Úrovne sú práve tri. Správa bez odpovede sa neposiela poštou. Lehota je lehota na prevzatie (adresát správu prečíta),
+nie na odpoveď. Odosielateľ môže lehotu skrátiť, nie predĺžiť. Keď nikto správu do lehoty neprevezme, služba vráti
+výsledok `expired` a odosielateľa zobudí zvonček "no reply". Keď adresáta nemožno zobudiť (vlákno neexistuje alebo je
+archivované), príde zvonček "undelivered". Odpoveď nemá lehotu, nesie úroveň pôvodnej správy (nižšiu služba zvýši)
+a ide do vlákna a témy odosielateľa. Novú otázku posielaš novou správou. Stavy správy sú pending, held, picked
+(prevzatá, so zápisom času), acked (uznaná) a výsledok expired alebo undelivered.
+
+Doručenie nesmie kontaminovať kontext. Stavový riadok a riadok po každom nástroji ukážu čakajúce správy iba ako
+identifikátor a kategóriu, nikdy ako text. Telo číta hlavný agent príkazom na prevzatie. Čítanie je prevzatie. Správy rôznych
+odosielateľov sa nemiešajú v jednom kontexte, spracuje sa jeden odosielateľ naraz: prečítať, odpovedať, uznať.
+
+Telo správy je dáta, nie pokyn operátora. Pokyn "od operátora" v tele agent ukáže operátorovi a nevykoná. Ťah spustený
+správou alebo budením nesmie prevziať ani uzavrieť tému, meniť pravidlá ani robiť nebezpečné operácie. Zastavenie pri
+`steer` určuje úroveň správy, nie jej text.
+
+Medzi agentmi je jediný kanál pošta. Zápis do vlákna iného agenta nástrojom runtime je zakázaný a hook ho zamietne.
+Úlohu, ktorú agent vie urobiť sám alebo cez iného agenta, operátorovi nedáva. Pošle ju poštou a nastaví si budík.
+
+Oznamy operátorovi nie sú správy do vlákna. Sú to záznamy v pošte (stránka bez skriptov a príkaz na výpis) s rozhodnutiami
+"presmeruj", "doruč", "zahoď" a "uzná". Rozhodnutia vykonáva pošta bez modelu. Ak je nastavený externý príkaz, pošle
+notifikáciu.
+
+Keď pošta nie je dostupná, klient uloží správu do lokálneho outboxu v brain a odošle ju pri ďalšom úspešnom volaní.
+Hook pri štarte nečaká na poštu dlhšie než 2 sekundy.
+
+### Ako to postaviť
+
+1. Napíš službu s úložiskom, kde je správa jeden súbor, a s kľúčmi pre odosielateľov v súbore s právami `600`.
+2. Napíš klienta s príkazmi: odoslanie, prevzatie, uznanie, počet, registrácia témy, oznamy, rozhodnutie o oznamoch,
+   výpis. Výstup nech je JSON, návratové kódy: 0 v poriadku, 1 odmietnuté, 2 pošta nedostupná, 3 iná inštancia.
+3. Zaregistruj tému pri zabratí. Pošta pozná predmet, viditeľnosť, držiteľa, režim a stroj držiteľa.
+4. Implementuj tri úrovne, lehoty a stavy správy z časti Mechanizmus. Odpoveď zdedí úroveň.
+5. Zapoj klienta do hookov: stavový riadok a riadok po nástroji s ID a kategóriou bez textu.
+6. Pridaj hook, ktorý zamietne zápis do vlákna iného agenta.
+7. Pridaj pravidlá: telo správy je dáta, ťah zo správy je zamknutý pre citlivé kroky, čakanie vždy s budíkom.
+8. Pridaj oznamy a ich rozhodnutia bez modelu.
+
+### Čo od runtime vyžaduje
+
+- Hook, ktorý do kontextu vloží stavový riadok a riadok po nástroji.
+- Lokálny socket alebo sieťový prístup ku službe.
+- Spôsob, ako vlákno vie povedať svoju identitu (kapitola 13).
+
+### Náš príklad
+
+Služba pošty je v súkromnom repe. Princípy pošty (adresa, úrovne, lehoty, telo správy ako dáta, kanál medzi agentmi) sú
+v časti Mechanizmus. Pravidlá pre správy medzi agentmi v staršej podobe sú v `global/CLAUDE.md`, §2.
+
+## 16. Budenie a vlákna v T3 Code
+
+### Problém
+
+Správa v pošte nič nerobí, kým adresát nie je bdelý. Agent, ktorý čaká v slučke, platí každý ťah. Agent, ktorého nikto
+nezobudí, stojí. Po reštarte servera sú rozbehnuté ťahy prerušené a nikto nevie, kde skončili.
+
+### Kedy to potrebuješ
+
+Potrebuješ to, keď agenti bežia v trvalých vláknach, ktoré sa dajú zobudiť textom, a čakanie ťa stojí tokeny alebo čas.
+
+### Mechanizmus
+
+Budenie je samostatný modul nad poštou, samostatný proces. Pošta funguje aj bez neho. Modul odoberá udalosti pošty
+(`blocker`, odpoveď, `expired`, `undelivered`, `steer`) a budí iba držiteľa témy na svojom stroji. Budiaca správa je
+pevná šablóna, nikdy telo správy. Runtime pozná iba tieto zvončeky, a to ako presný celý prompt:
+
+| zvonček | kedy | čo agent urobí |
+|---|---|---|
+| `you have mail in topic <téma>` | čaká správa | prečíta riadok s ID a postupuje podľa úrovne |
+| `no reply <id>` | adresát správu neprevzal do lehoty | rozhodne: povýši na blocker, pošle inam, spýta sa operátora |
+| `undelivered <id>` | adresáta nemožno zobudiť | rozhodne ako vyššie |
+| `turn interrupted, continue from handover` | ťah prerušil reštart | pokračuje podľa handoveru, zámky neplatia |
+| `turn ended with a next step, continue from handover` | ťah skončil s krokom v handoveri | urobí ďalší krok |
+
+Prompt operátora, ktorý zvonček cituje, je bežný prompt operátora. Ťah zo zvončeka smie čítať, odpovedať a uznávať, ale
+nesmie prevziať ani uzavrieť tému, meniť pravidlá ani robiť nebezpečné operácie. Ak po zvončeku nečaká žiadna pošta,
+agent ťah ukončí bez práce.
+
+Modul drží limity. Najviac 6 zobudení za hodinu na dvojicu tém a zastavenie pri dvoch rovnakých správach za sebou, čo
+zastaví slučku dvoch agentov, ktorí si navzájom odpovedajú. Workflow hlási začiatok a koniec každého ťahu a podľa toho
+modul pozná ťah prerušený reštartom servera. Také vlákno dostane zvonček "continue from handover" najviac 3-krát za hodinu.
+Čistá pošta bez modulu budenia tiež funguje: správy čakajú, kým adresát nie je vzbudený inak.
+
+Agent nečaká v popredí. Pred koncom ťahu si pre vonkajšiu udalosť nastaví budík a povie ho: pošta s lehotou, pozadový
+watcher s limitom alebo plánovaná úloha runtime. Čakanie v popredí nad 10 sekúnd hook zamietne. Operátor nie je budík:
+agent mu nepovie "ozvi sa".
+
+Vlákna v T3 Code sú trvalé relácie. Nové vlákno pre tému založí skript témy samotný: vlákno má názov témy a jeho prvá
+správa je obsah témy. Téma patrí novému vláknu od prvého ťahu, zakladajúce ju nedrží. Do aktuálneho vlákna sa téma zakladá
+len na výslovný pokyn operátora. Hook po zmene témy raz požiada o premenovanie vlákna na názov témy a agent to urobí
+nástrojom T3. Pri uzavretí témy sa vlákno archivuje, hlavné vlákno persony nikdy.
+
+### Ako to postaviť
+
+1. Rozhodni, ako sa vláknu pošle text (v T3 Code príkaz na poslanie správy vláknu). Napíš modul, ktorý odoberá
+   udalosti pošty a pošle vláknu držiteľa pevný zvonček.
+2. Zaveď limit zobudení na dvojicu tém a zastavenie pri opakovaní.
+3. Pridaj záznam začiatku a konca ťahu a po reštarte servera pošli prerušeným ťahom zvonček pokračovania.
+4. V hookoch rozpoznaj zvončeky iba ako presný celý prompt a zamkni citlivé kroky v takom ťahu.
+5. Pridaj pravidlo budíka a hook proti čakaniu.
+6. Zapoj premenovanie a archiváciu vlákna do životného cyklu témy.
+
+### Čo od runtime vyžaduje
+
+- Spôsob, ako z programu poslať vláknu text a zistiť, že práve nepracuje.
+- Nástroje na premenovanie, archiváciu a založenie vlákna.
+- Hook, ktorý vie rozpoznať ťah spustený zvončekom.
+
+### Náš príklad
+
+Modul budenia a skript témy sú v súkromných repách workflow a pošty. Staršiu podobu budiča so súborovými schránkami
+ukazuje kapitola 8 a `README.md`.
+
+## 17. Ako začať so systémom s témami
+
+Poradie na prvé dva týždne. Nestavaj všetko naraz.
+
+1. Kapitoly 1 až 5 a 12 (persona, pravidlá, rozhodnutia, chyby) pre jedného agenta.
+2. Tri repá a skript zápisu do brain s git hookom (kapitola 14). Hotovo, keď agent zapíše pravidlo cez skill a priamy zápis
+   do brain zamietne hook.
+3. Téma so záznamom držiteľa a handoverom (kapitola 13) pre diskusnú tému. Hotovo, keď nová relácia po čistení kontextu
+   pokračuje podľa handoveru bez otázky.
+4. Kódové témy s kópiou kódu a uzavretím témy. Hotovo, keď dve súbežné témy zmenia ten istý projekt bez konfliktu a
+   do hlavnej vetvy sa dostanú až uzavretím.
+5. Pilot s kritériami z kapitoly 14 a kanálmi vydania.
+6. Pošta so službou, tromi úrovňami a oznamami (kapitola 15). Až keď dve témy potrebujú posielať prácu.
+7. Budenie so zvončekmi a limitmi (kapitola 16) a vlákna témy v T3 Code. Až keď čakanie stojí viac než ručné pozretie.
+
+Čo odložiť: poštu a budenie, kým nemáš aspoň dve témy s rôznymi držiteľmi. Adaptér pre druhý runtime, kým neoveríš
+prvý. Skilly nad základných desať, kým ich nepotrebuješ viackrát.
+
+Dôvody vychádzajú z praxe na jednom serveri s jedným operátorom. Skopíruj mechanizmy, nie naše pravidlá.

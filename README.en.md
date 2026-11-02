@@ -8,7 +8,7 @@ nothing gets installed from it.
 
 ## Where to start
 
-Read `PLAYBOOK.en.md`. Each chapter has a problem, a part "When you need it", the mechanism, steps without our code, what it
+Read `PLAYBOOK.en.md`. Chapters 1 to 12 build one agent with rules, decisions and a check. Part B (chapters 13 to 17) describes the current form of our system with topics, the workflow as a plugin, a mail service and waking of threads in T3 Code. Each chapter has a problem, a part "When you need it", the mechanism, steps without our code, what it
 requires from the runtime, and a link to our example in this repo. Copy the mechanisms, not our rules. The rules answer our
 mistakes, and yours will be different.
 

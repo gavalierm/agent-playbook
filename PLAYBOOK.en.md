@@ -16,11 +16,12 @@ So the system stands on three things. Rules and decisions are files in git. A mi
 with a change to the file that governs the behaviour. Whatever a machine can check is checked by a hook or a script, not
 by the goodwill of the model.
 
-Each of chapters 1 to 11 has the same structure. Problem says what goes wrong without the mechanism, also for a reader
+Each of chapters 1 to 11 and 13 to 16 has the same structure. Problem says what goes wrong without the mechanism, also for a reader
 who does not know our system. When you need it says when not to build the mechanism. Mechanism describes how it works.
 How to build it gives steps, a file format and an example, without our code. What it requires from the runtime lists
 what the tool the agent runs in must be able to do. Our example shows paths in this repo where you can read the finished
-version. Chapter 12 is the order of work for the first week.
+version. Chapter 12 is the order of work for the first week. Chapters 13 to 17 (part B) describe the current form of our system:
+topics, the workflow as a plugin, the mail service and waking of threads. Are you building a new system? After chapters 1 to 6, continue with part B.
 
 The scripts without which the harness would not run (the waker, clean context, messages between agents, the task
 manager wrapper) live in the repo `https://github.com/gavalierm/agent-runtime`. The repo is public (D0171). Every mechanism is still described in a way that lets you build it
@@ -69,6 +70,16 @@ mechanisms, meaning the way a rule is written down, loaded, checked and fixed.
 | blocker | a link "this task waits for that one" with a mandatory reason, when that one closes, this one unblocks |
 | clean context | a new session without a conversation, which the agent starts from what is written in files and in the task manager |
 | handover | a small file with a summary of the state and the next step, which the agent writes before cleanup and which is inserted into the new session |
+| topic | the unit of work of part B: a name, a one-sentence subject, a kind (code or discussion), a holder and a handover |
+| holder | the thread that currently leads a topic, at most one at a time, recorded in the topic's file |
+| topic handover | one file per topic, at most 15 lines (Task, Done, Next step, Files, Open questions) |
+| brain | a git repo with the data of a persona or project: rules, memory, decisions, skills, logs and topics |
+| workflow | a plugin with the mechanics: scripts, hooks, skills and a brain template, with no instance data |
+| mail | a separate service for messages between topics and agents, with keys, three levels and deadlines |
+| message level | `blocker`, `steer` or `assist`, according to how much the reply blocks the sender |
+| bell | a fixed prompt with which waking wakes the holder's thread (never the body of a message) |
+| main thread | the persistent topic `main` of a persona, which sorts the mail and the reports |
+| pilot | a separate project with its own brain, in which a change to the workflow is verified before release |
 
 ### Prerequisites
 
@@ -1463,3 +1474,381 @@ The reasons in this playbook come from practice on one server with one operator.
 hook `clear_bridge.mjs` are tied to our runtime. Chapters 7, 8 and 11 describe how they are built so that you can build them
 without our code. Our code is in the repo `https://github.com/gavalierm/agent-runtime` (public, D0171). The rest is portable at once, that is the persona in git, the decision register, the mistake
 loop, hooks with a correct procedure and a task with states.
+
+Do you want more parallel topics, a mail service and waking of threads? Continue with part B (chapters 13 to 17).
+
+## Part B: a system with topics, a mail service and threads
+
+Chapters 13 to 17 describe the form in which our system runs today: the workflow as a plugin (version 0.7.0), the mail
+service (version 0.4.0) and threads in T3 Code. Chapters 7, 8 and 11 describe an older, simpler form with a task manager
+and file mailboxes. Build a new system according to chapters 13 to 17. Chapters 1 to 6, 9 and 10 hold in both forms, only
+in part B the workflow (scripts, hooks and skills in one plugin) carries them out instead of hand-wired files.
+
+The implementation of the workflow and the mail lives in private repos. That is why each chapter is written so that you can
+build it without our code: it describes files, steps, commands and boundaries, not source text.
+
+## 13. A topic as the unit of work
+
+### Problem
+
+A session is temporary: it ends at clean context, at compaction, at a crash or at a server restart. Work that outlives it
+needs a carrier that is not a session. When the carrier is missing, this happens. Two threads do the same thing and overwrite
+each other's changes. A new session does not know what is done. Parallel code changes mix in one clone. The agent asks the
+operator about things it should have decided itself, and the operator does not know who holds what.
+
+### When you need it
+
+You need it when one agent (a persona) leads several separate things at once, when several sessions work on one thing in
+sequence, or when agents hand work to each other. With one agent and one thing, the procedure from chapter 12 is enough.
+
+### Mechanism
+
+The system has three repos. The workflow is the mechanics (scripts, hooks, skills, templates) and carries the data of no
+instance. The brain is the data of one persona or project: rules, memory, decisions, exceptions, skills, logs and topics.
+The project is code. The brain is a separate git repo next to the project, and a persona is a brain that has no project.
+
+A topic is the unit of work. It has a name made of lowercase letters, digits and hyphens, and a subject, that is one
+sentence from which you can decide whether a thing belongs to it or not. It is either a code topic (it changes code) or a
+discussion topic. Its state is `working` or `free`. In the brain it has a topic folder with three files: the topic
+description (name, subject, kind, state), the holder record and the handover. General topics such as "miscellaneous" are
+forbidden, because a topic without a decidable subject has no address.
+
+The holder is the thread that leads the topic. At most one thread holds it at a time. A script claims the topic in this
+order: fetch the brain, check the holder record, write the holder, commit, push immediately. The content of the record after
+the fetch decides. A rejected push is not proof that somebody else holds the topic: the script fetches again and verifies.
+The holder carries the identity of the thread from a stable ID that the environment supplies (in T3 Code a variable with the
+thread ID, outside it a launcher that generates the ID). The session ID of the tool and the PID are not used, because they
+change. A thread without a stable ID does not claim a topic. Only the operator may order taking a topic over from another
+holder, and the script refuses it without the operator's explicit confirmation. The original holder stops at its next write.
+Inactivity of the holder is not a reason to take over. A sub-agent never holds a topic.
+
+The holder has a mode, `operator` (the default: a blocker for the operator waits for the operator's decision) or `auto`
+(the agent resolves the blocker itself through a worker).
+
+A code topic works in its own copy of the code, a separate clone next to the project, on a branch named after the topic.
+Nothing changes on the main branch of the project. The result reaches it only by closing the topic after merging and
+verification. The copy is a separate clone, not a worktree.
+
+There is exactly one handover per topic and its key is the topic, not a session. It has at most 15 lines in the sections
+Task ("Zadanie"), Done ("Hotové"), Next step ("Ďalší krok"), Files ("Súbory") and Open questions ("Otvorené otázky"). The
+agent rewrites it after every change of state and always before clearing the context. When taking over a topic, the agent
+compares "Done" with the files, and on a mismatch it stops and asks.
+
+The main thread of a persona holds the permanent topic `main` with the address `<persona>/main`. It sorts the mail and the
+reports, leads the other topics and is never closed or released. Nobody else claims the topic `main` without the operator's
+instruction.
+
+Continuing is a rule, not a habit. The next step from the handover is not a reason to end the turn: the agent does it. It
+stops only at a blocker (an input is missing that only the operator has, the step exceeds the assignment or the authority, a
+rule requires consent, the choice depends on the operator's priority) or at an alarm for an external event. A question to the
+operator outside a blocker is forbidden.
+
+Closing has two forms. Closing a unit of work verifies the result with one observation, writes the handover and leaves the
+topic open. Closing the whole topic merges the code copy into the main branch, archives the topic, frees the address in the
+mail, and the thread is archived. The main thread is not closed.
+
+### How to build it
+
+1. Create three repos: the workflow, the brain (next to the project) and the project. Put folders for rules, memory,
+   decisions, exceptions, skills, logs and topics into the brain. In the project, put a small configuration file with a
+   relative path to the brain.
+2. Write the topic script with these commands: create (name, subject, kind), claim, release, list of open topics, state of
+   the thread, code copy. Claiming follows the order fetch, check, write, commit, push and, after a failure, verification of
+   the content.
+3. Introduce a stable thread ID from the environment and refuse claiming without it. Refuse claiming also in a turn started
+   by a message (chapter 15).
+4. Write the handover template with five sections and a limit of 15 lines. The write script refuses a longer one.
+5. At session start, insert into the context the list of open topics and one line about which topic the thread holds, and in
+   a new session without a topic let the agent choose or create a topic.
+6. For code topics, write copying the project into a separate clone with the topic branch, and the rule that code changes
+   only there.
+7. Write closing a unit and closing a topic as two commands. Closing a topic refuses until the copy is merged and verified,
+   and refuses also in a turn started by a message.
+8. Write the rules of continuing and of the blocker (the Mechanism part) into the brain's rules.
+
+### What it requires from the runtime
+
+- A stable thread ID available to scripts and hooks.
+- A hook at session start that can insert text into the context.
+- A way to rename and archive a thread from the agent (in T3 Code, the tools for working with threads).
+- Git with the ability to push to the brain from every machine where threads run.
+
+### Our example
+
+The implementation is in the private workflow repo, and the principles of the topic, the holder, the handover and the
+thread identity are in its principles document. Here you have no code, you have the description above. The decision "clone
+instead of worktree" is in the Mechanism part.
+
+## 14. The workflow as a plugin: brain, writing, rules, hooks
+
+### Problem
+
+An agent remembers rules written as text unreliably, hand-wired hooks drift apart between projects, and every agent writes to
+the shared data in its own way. The result is duplicate notes, rules without enforcement and files that agents overwrite for
+each other.
+
+### When you need it
+
+You need it from the second agent or the second project, when you get tired of synchronizing rules, hooks and skills by
+hand. With one agent, chapters 1 to 6 written by hand are enough.
+
+### Mechanism
+
+The workflow is a plugin for the agent's runtime that is enabled in a project, not globally. From one policy file it
+generates the project settings for a specific runtime (an adapter for Claude Code, an adapter for Codex). The policy carries
+the forbidden paths, switching off the native memory, the list of hooks, limits and templates of the bells. The plugin writes
+nothing into the user's settings. Enforcement has an order: first the runtime setting, then a hook, and only last a text
+rule. A rule the agent repeatedly breaks must be enforced by a hook.
+
+Writing into the brain has one entry point: the save skill. The agent classifies the content with a tree and a script writes
+it.
+
+| what it is | where it goes |
+|---|---|
+| a procedure with steps | skill |
+| changes behaviour | rule (only a command or a ban, steps belong in a skill) or exception |
+| a choice with a real alternative | decision, which is never deleted, only superseded |
+| content for a project | project document |
+| state of work | topic handover |
+| everything else | memory by subject, rewritten, not duplicated |
+
+The script writes into the brain through a clone lock, the commit carries the script's mark, and a git hook in the brain
+refuses a commit without it. After writing, the script tries a push. When the same file changed on both sides, nothing is
+merged automatically. Every item is a separate file, indexes are generated locally and not committed. Memory carries its
+origin: `operator` is not verified, `derived` is verified by a fingerprint of the sources, `observed` is verified before an
+irreversible action. A valid item is not deleted because of a limit. When the limit of an index or of the rules is exceeded,
+the agent runs a consolidation after finishing a unit of work.
+
+Rules are composed of layers (core, runtime, machine, project, local), and the most specific wins. An exception from a rule
+is a record with the ID of the principle it breaks. Some principles are immutable (data protection, scope of the assignment,
+the single writer). The composed rules have a limit of 200 lines and 10,000 characters.
+
+Session start inserts a fixed list: the rules, the skills, a status line, the memory index, the decision index, the open
+topics and the workflow version. Together at most 15,000 characters. During the session a hook inserts into the context only
+the status line (thread, topic and its mode, number of waiting messages) and a signal of at most two lines. A change of
+rules applies from the next turn.
+
+The agent has two roles. The main agent writes into the brain, holds the topic and talks to the operator. The worker (a
+sub-agent) handles research and bounded tasks without knowing the workflow, writes nothing, does not hold a topic and does
+not talk to the operator. A script composes its assignment from the task and the bundled skills, and the assignment carries
+the path for working files. The worker runs on a cheap model (a stronger one only with a reason, for demanding synthesis) and
+returns a conclusion within 2,000 characters with a "Failures" section. The main agent spot-checks the result.
+
+A mistake becomes a skill (chapter 5), including a mistake of a worker: lessons go down into the assignment, mistakes go up
+to the main agent. The agent reports every mistake to the workflow manager. Data protection: only what git can restore is
+safe. Deleting and overwriting untracked files requires the operator's confirmation with a list of the targets. A rejected
+command is not bypassed with another command that has the same effect.
+
+A release has two branches: `dev` for development and `main` for the stable state with tags vX.Y.Z. The plugin uses a stable
+clone from a tag, and a development clone is loaded by an environment variable in the process that starts sessions. The
+check skill compares the version from the start with the installed one and updates accordingly. The workflow is changed by
+the manager on the branch `dev`, and the stable state is switched only after the tests pass.
+
+A pilot is a separate project with its own brain, in which a change is verified by observation (the behaviour of threads
+cannot be verified by a unit test) before it is released. Before the test the pilot is synchronized to the current version
+and the threads are prepared without questions to the operator. Success criteria: at least two code topics run in parallel,
+one discussion topic goes from creation to closing, the start context stays under the limit, and nothing is written outside
+the pilot's three repos. The way back is switching the plugin off in the project.
+
+### How to build it
+
+1. Write a plugin with folders for adapters, hooks, skills, a brain template and a policy file. The manifest leaves it
+   disabled by default.
+2. Write an adapter that generates the project settings from the policy. Never write them by hand.
+3. Write the script for writing into the brain with a clone lock, a commit mark and a brain git hook. Let the save skill
+   carry the tree from the Mechanism part.
+4. Compose the rules from layers and check the limits at every composition.
+5. Write the start hook with the fixed list and a prompt hook that inserts only the status line and the signal. Add a
+   PreToolUse hook that enforces the forbidden paths, rejects foreground waiting over 10 seconds and rejects a message into
+   another agent's thread (chapter 15).
+6. Write the worker and the assignment script. The worker-end hook returns a result without the "Failures" section.
+7. Introduce release channels: `main` with tags, a stable clone, a development clone through a process variable.
+8. Create a pilot and verify every change by its criteria before you release it.
+
+### What it requires from the runtime
+
+- Hooks for start, prompt, before and after a tool, end of reply and end of a sub-agent.
+- Switching off the native memory and forbidding writes to selected paths must be possible through settings.
+- A way to load a plugin from a folder according to an environment variable.
+- A sub-agent for which a model can be set and which does not get the main agent's rules.
+
+### Our example
+
+The skills of the workflow: save, topic, closing, mail, delegation, mistake, search, consolidation, check and shell. The
+chapter summarizes their purpose, the code is not part of this repo. The mistake skill from chapter 5 is shown by
+`skills/chyba/SKILL.md`.
+
+## 15. Mail as a service
+
+### Problem
+
+File mailboxes (chapter 8) require every sender to have write access to other people's directories, cannot say who really
+sent a message, and cannot watch deadlines. A message written straight into another agent's thread interrupts its turn. And
+the body of a message with an instruction is easily confused with an instruction of the operator.
+
+### When you need it
+
+You need it when several topics or agents work at the same time and send each other work, questions and results. With one
+agent and one topic, do not build mail.
+
+### Mechanism
+
+Mail is a separate service. A sender needs its address and its own key, not a clone or write access to someone else's repo.
+Every request except the health check requires a key (also on a local socket), and the service determines the sender from
+the key, not from the message text. A message is one file that only the service writes. The service runs on demand at the
+first call, or permanently behind a reverse proxy. Several independent instances can run on one machine, each with its own
+data folder, keys and a local socket with no shared port.
+
+The address of a message is a project and a topic, or a persona (and optionally a project and a topic). The main thread of
+a persona has the address `<persona>/main`. A topic is registered in the mail when it is claimed, and the mail has no record
+of holders of its own: it takes them from the topic's record. A message for an unregistered topic is held, and a notice to
+the operator "new topic / redirect" ("nová téma / presmeruj") is created. The sender gets the same reply as on delivery, so
+it cannot tell from it whether the topic exists. Private topics are delivered only to the owner.
+
+The message level is set by the sender according to how much the reply blocks it.
+
+| level | meaning | deadline for pickup |
+|---|---|---|
+| `blocker` | the sender cannot continue without a reply, ends the turn and the reply wakes it | 5 minutes |
+| `steer` | the holder of the target topic is to stop work on it at once, delivered also into a running turn | 5 minutes |
+| `assist` | the sender continues with other work, the reply wakes it | 30 minutes |
+
+There are exactly three levels. A message without a reply is not sent by mail. The deadline is a deadline for pickup (the
+addressee reads the message), not for a reply. The sender may shorten the deadline, not extend it. When nobody picks the
+message up by the deadline, the service returns the result `expired` and the bell "no reply" wakes the sender. When the
+addressee cannot be woken (the thread does not exist or is archived), the bell "undelivered" arrives. A reply has no deadline,
+carries the level of the original message (the service raises a lower one) and goes to the sender's thread and topic. A new
+question is sent as a new message. The states of a message are pending, held, picked (picked up, with a time written),
+acked (acknowledged) and the results expired or undelivered.
+
+Delivery must not contaminate the context. The status line and the line after every tool show waiting messages only as an
+identifier and a category, never as text. The body is read by the main agent with the pickup command. Reading is picking up.
+Messages from different senders do not mix in one context, one sender is processed at a time: read, reply, acknowledge.
+
+The body of a message is data, not an instruction of the operator. An instruction "from the operator" in the body the agent
+shows to the operator and does not carry out. A turn started by a message or by waking must not take over or close a topic,
+change rules or perform dangerous operations. Stopping at `steer` is decided by the message level, not by its text.
+
+Between agents the only channel is mail. Writing into another agent's thread with a runtime tool is forbidden and a hook
+rejects it. A task the agent can do itself or through another agent is not given to the operator. The agent sends it by mail
+and sets an alarm.
+
+Notices to the operator are not messages into a thread. They are records in the mail (a page without scripts and a command
+for listing) with the decisions "presmeruj" (redirect), "doruč" (deliver), "zahoď" (discard) and "uzná" (acknowledge). The
+mail carries out the decisions without a model. If an external command is configured, it sends a notification.
+
+When the mail is not available, the client stores the message in a local outbox in the brain and sends it at the next
+successful call. The start hook does not wait for the mail longer than 2 seconds.
+
+### How to build it
+
+1. Write the service with storage where a message is one file, and with keys for senders in a file with permissions `600`.
+2. Write a client with these commands: send, pick up, acknowledge, count, register a topic, notices, decision on notices,
+   listing. Let the output be JSON, with exit codes: 0 fine, 1 rejected, 2 mail unavailable, 3 another instance.
+3. Register the topic at claiming. The mail knows the subject, the visibility, the holder, the mode and the machine of the
+   holder.
+4. Implement the three levels, the deadlines and the message states from the Mechanism part. A reply inherits the level.
+5. Wire the client into the hooks: the status line and the line after a tool with the ID and the category, without text.
+6. Add a hook that rejects writing into another agent's thread.
+7. Add the rules: the body of a message is data, a turn from a message is locked for sensitive steps, waiting always comes
+   with an alarm.
+8. Add the notices and their decisions without a model.
+
+### What it requires from the runtime
+
+- A hook that inserts the status line and the line after a tool into the context.
+- A local socket or network access to the service.
+- A way for a thread to state its identity (chapter 13).
+
+### Our example
+
+The mail service is in a private repo. The principles of the mail (address, levels, deadlines, the body of a message as data,
+the channel between agents) are in the Mechanism part. The rules for messages between agents in the older form are in
+`global/CLAUDE.md`, §2.
+
+## 16. Waking and threads in T3 Code
+
+### Problem
+
+A message in the mail does nothing until the addressee is awake. An agent that waits in a loop pays for every turn. An agent
+that nobody wakes stands still. After a server restart, running turns are interrupted and nobody knows where they ended.
+
+### When you need it
+
+You need it when agents run in persistent threads that can be woken with text, and waiting costs you tokens or time.
+
+### Mechanism
+
+Waking is a separate module above the mail, a separate process. The mail works without it. The module consumes mail events
+(`blocker`, a reply, `expired`, `undelivered`, `steer`) and wakes only the holder of a topic on its own machine. The waking
+message is a fixed template, never the body of a message. The runtime knows only these bells, each as an exact whole prompt:
+
+| bell | when | what the agent does |
+|---|---|---|
+| `you have mail in topic <topic>` | a message is waiting | reads the line with the ID and proceeds by the level |
+| `no reply <id>` | the addressee did not pick the message up by the deadline | decides: escalates to a blocker, sends elsewhere, asks the operator |
+| `undelivered <id>` | the addressee cannot be woken | decides as above |
+| `turn interrupted, continue from handover` | a restart interrupted the turn | continues by the handover, the locks do not apply |
+| `turn ended with a next step, continue from handover` | the turn ended with a step in the handover | does the next step |
+
+An operator prompt that quotes a bell is an ordinary operator prompt. A turn from a bell may read, reply and acknowledge, but
+must not take over or close a topic, change rules or perform dangerous operations. If no mail is waiting after the bell, the
+agent ends the turn without work.
+
+The module keeps limits. At most 6 wakings per hour for a pair of topics, and a stop at two identical messages in a row,
+which stops a loop of two agents who keep replying to each other. The workflow reports the start and the end of every turn,
+and from that the module recognizes a turn interrupted by a server restart. Such a thread gets the bell "continue from
+handover" at most 3 times per hour. Plain mail without the waking module works too: messages wait until the addressee is
+woken some other way.
+
+The agent does not wait in the foreground. Before the end of a turn it sets an alarm for the external event and says it: mail
+with a deadline, a background watcher with a limit, or a scheduled task of the runtime. A hook rejects foreground waiting over
+10 seconds. The operator is not an alarm: the agent does not tell the operator "get back to me".
+
+Threads in T3 Code are persistent sessions. The topic script itself creates a new thread for a topic: the thread has the name
+of the topic and its first message is the content of the topic. The topic belongs to the new thread from the first turn, and
+the creating thread does not hold it. A topic is created in the current thread only on the operator's explicit instruction.
+After a change of topic, a hook asks once for the thread to be renamed to the name of the topic, and the agent does it with
+a T3 tool. When a topic is closed, its thread is archived, the persona's main thread never.
+
+### How to build it
+
+1. Decide how text is sent to a thread (in T3 Code, the command for sending a message to a thread). Write a module that
+   consumes mail events and sends the holder's thread a fixed bell.
+2. Introduce the limit of wakings per pair of topics and the stop on repetition.
+3. Add a record of the start and the end of a turn, and after a server restart send the interrupted turns the continuation
+   bell.
+4. In the hooks, recognize the bells only as an exact whole prompt and lock sensitive steps in such a turn.
+5. Add the alarm rule and the hook against waiting.
+6. Wire renaming and archiving of the thread into the life cycle of the topic.
+
+### What it requires from the runtime
+
+- A way to send text to a thread from a program and to find out that it is not working at the moment.
+- Tools for renaming, archiving and creating a thread.
+- A hook that can recognize a turn started by a bell.
+
+### Our example
+
+The waking module and the topic script are in the private workflow and mail repos. The older form of the waker with file
+mailboxes is shown by chapter 8 and `README.md`.
+
+## 17. How to start with a system with topics
+
+The order for the first two weeks. Do not build everything at once.
+
+1. Chapters 1 to 5 and 12 (persona, rules, decisions, mistakes) for one agent.
+2. Three repos and the script for writing into the brain with a git hook (chapter 14). Done when the agent writes a rule
+   through the skill and the hook rejects a direct write into the brain.
+3. A topic with a holder record and a handover (chapter 13) for a discussion topic. Done when a new session after clearing
+   the context continues by the handover without a question.
+4. Code topics with a code copy and topic closing. Done when two parallel topics change the same project without a conflict
+   and reach the main branch only by closing.
+5. A pilot with the criteria from chapter 14 and release channels.
+6. Mail with the service, three levels and notices (chapter 15). Only when two topics need to send each other work.
+7. Waking with bells and limits (chapter 16) and topic threads in T3 Code. Only when waiting costs more than a manual look.
+
+What to postpone: mail and waking until you have at least two topics with different holders. An adapter for a second runtime
+until you verify the first. Skills beyond the basic ten until you need them more than once.
+
+The reasons come from practice on one server with one operator. Copy the mechanisms, not our rules.
