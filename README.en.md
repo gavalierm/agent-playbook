@@ -9,43 +9,6 @@ persona's data) and a mail service. Work is carried by topics, and agents run in
 T3 Code threads. The guide describes what we built, why, and in what order to
 build it yourself. It is not a plugin, and nothing gets installed from it.
 
-## How it works (in a nutshell)
-
-```mermaid
-flowchart TB
-  OP["<b>Operator</b><br/>gives a task in plain words and decides<br/>only what the agent may not decide"]
-
-  subgraph PA["Project A (folder)"]
-    direction LR
-    BA[("Brain (git)<br/>project memory")]
-    DA[("Project (git)<br/>files and data")]
-  end
-  subgraph PB["Project B (folder)"]
-    direction LR
-    BB[("Brain (git)<br/>project memory")]
-    DB[("Project (git)<br/>files and data")]
-  end
-
-  subgraph AG["The agent works on one task (topic) in one project"]
-    direction LR
-    S1["1. Reads the brain<br/>rules, decisions,<br/>where it stopped last time"] --> S2["2. Works in the project<br/>changes files and data,<br/>hands searching to helpers"] --> S3["3. Writes to the brain<br/>what it did, what is next,<br/>what it learned"]
-  end
-
-  OP --> AG
-  BA -. reads .-> S1
-  S2 -. changes .-> DA
-  S3 -. writes .-> BA
-```
-
-- A **folder** is a plain container and remembers nothing. **Git** means files with their full history of changes and a backup. Each project is a folder with two separate repositories side by side: the brain (memory) and the project itself (files and data).
-- **Mail:** agents send tasks to each other. **Alarm clock:** wakes an agent when it should continue. **Guards (hooks):** check every reply so the agent does not wait without an alarm and does not ask needless questions.
-
-```mermaid
-flowchart LR
-  E["<b>Mistake</b><br/>something fails or the operator<br/>says “that is wrong”"] --> K["<b>Skill</b><br/>the agent writes a how-to into the brain:<br/>“in this situation do this, not that”"] --> N["<b>Automatically next time</b><br/>in a similar situation the how-to<br/>loads for the agent by itself"]
-  K -. applies everywhere .-> R["<b>Shared rules</b><br/>every agent in every project<br/>gets the new version"]
-```
-
 ## Where to start
 
 Read `PLAYBOOK.en.md`. Chapter 0 gives the overview and the glossary, chapter 13
