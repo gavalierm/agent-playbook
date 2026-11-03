@@ -9,6 +9,43 @@ dátami persony) a poštová služba. Prácu nesú témy a agenti bežia vo vlá
 T3 Code. Návod opisuje, čo sme postavili, prečo a v akom poradí to postaviť
 u seba. Nie je to plugin a nič sa z neho neinštaluje.
 
+## Ako to funguje (v kocke)
+
+```mermaid
+flowchart TB
+  OP["<b>Operátor</b><br/>zadá úlohu slovami, rozhoduje iba to,<br/>čo agent rozhodnúť nesmie"]
+
+  subgraph PA["Projekt A (priečinok)"]
+    direction LR
+    BA[("Brain (git)<br/>pamäť projektu")]
+    DA[("Projekt (git)<br/>súbory a dáta")]
+  end
+  subgraph PB["Projekt B (priečinok)"]
+    direction LR
+    BB[("Brain (git)<br/>pamäť projektu")]
+    DB[("Projekt (git)<br/>súbory a dáta")]
+  end
+
+  subgraph AG["Agent pracuje na jednej úlohe (téme) v jednom projekte"]
+    direction LR
+    S1["1. Načíta brain<br/>pravidlá, rozhodnutia,<br/>kde minule skončil"] --> S2["2. Pracuje v projekte<br/>mení súbory a dáta,<br/>hľadanie dá pomocníkom"] --> S3["3. Zapíše do brainu<br/>čo urobil, čo ďalej,<br/>čo sa naučil"]
+  end
+
+  OP --> AG
+  BA -. číta .-> S1
+  S2 -. mení .-> DA
+  S3 -. zapisuje .-> BA
+```
+
+- **Priečinok** je obyčajný obal a nič si nepamätá. **Git** sú súbory s celou históriou zmien a zálohou. Každý projekt je priečinok s dvoma oddelenými repami vedľa seba: brain (pamäť) a samotný projekt (súbory a dáta).
+- **Pošta:** agenti si posielajú úlohy medzi sebou. **Budík:** zobudí agenta, keď má pokračovať. **Strážcovia (hooky):** kontrolujú každú odpoveď, aby agent nečakal bez budíka a nepýtal sa zbytočne.
+
+```mermaid
+flowchart LR
+  E["<b>Chyba</b><br/>niečo zlyhá alebo operátor<br/>povie „to je zle“"] --> K["<b>Skill</b><br/>agent zapíše do brainu návod:<br/>„v tejto situácii rob toto, nie tamto“"] --> N["<b>Automaticky nabudúce</b><br/>v podobnej situácii sa návod<br/>agentovi načíta sám"]
+  K -. platí všade .-> R["<b>Spoločné pravidlá</b><br/>novú verziu dostanú všetci<br/>agenti vo všetkých projektoch"]
+```
+
 ## Kde začať
 
 Prečítaj `PLAYBOOK.md`. Kapitola 0 dáva prehľad a slovník, kapitola 13 poradie
